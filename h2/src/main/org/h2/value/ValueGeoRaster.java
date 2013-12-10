@@ -116,6 +116,69 @@ public class ValueGeoRaster extends ValueLob {
         }
     }
     
+    public int getIndexBand(int numBandQuery){
+        if(numBandQuery<0){
+            numBandQuery=0;
+        }else if(numBandQuery>(numBands-1)){
+            numBandQuery=numBands-1;
+        }
+        
+        
+        int indexByte = 61;
+        int currBandsRead = 0;
+        byte[] buffer = new byte[1];
+        InputStream input = getInputStream();
+        
+        int sizeUnit = 0;
+        while(currBandsRead<numBandQuery){
+            try{
+                input.read(buffer, 0, 1);
+                System.out.println(buffer[0]);
+                switch(buffer[0]){
+                    case 0:
+                        // sizeUnit=1 in bit
+                    case 1:
+                        // sizeUnit=2 in bit
+                    case 2:
+                        // sizeUnit=4 in bit
+                    case 3:
+                        sizeUnit=1;
+                        break;
+                    case 4:
+                        sizeUnit=1;
+                        break;
+                    case 5:
+                        sizeUnit=2;
+                        break;
+                    case 6:
+                        sizeUnit=2;
+                        break;
+                    case 7:
+                        sizeUnit=4;
+                        break;
+                    case 8:
+                        sizeUnit=4;
+                        break;
+                    case 10:
+                        sizeUnit=4;
+                        break;
+                    case 11:
+                        sizeUnit=8;
+                        break;
+                    case 13:
+                        // Needs to throw an exception
+                }
+                System.out.println(sizeUnit);
+                input.skip((width*height+1)*sizeUnit);
+                indexByte += (width*height+1)*sizeUnit+1;
+                currBandsRead++;
+            }catch(IOException ex){
+                throw DbException.convertIOException(ex, null);
+            }
+        }
+        return indexByte;
+    }
+    
     public short getVersion() {
         return version;
     }
