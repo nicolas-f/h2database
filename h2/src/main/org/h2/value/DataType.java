@@ -342,10 +342,16 @@ public class DataType {
                 104
         );
         add(Value.GEOMETRY, Types.OTHER, "Geometry",
-                createString(false),
+                createLob(),
                 new String[]{"GEOMETRY"},
                 32
         );
+        add(Value.GEORASTER, Types.OTHER, "Georaster",
+                createString(false),
+                new String[]{"GEORASTER"},
+                104
+        );
+        
         DataType dataType = new DataType();
         dataType.prefix = "(";
         dataType.suffix = "')";

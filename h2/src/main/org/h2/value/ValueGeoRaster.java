@@ -1,10 +1,13 @@
 /*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
+ * Copyright 2004-2013 H2 Group. Multiple-Licensed under the H2 License,
+ * Version 1.0, and under the Eclipse Public License, Version 1.0
+ * (http://h2database.com/html/license.html).
+ * Initial Developer: H2 Group
  */
 package org.h2.value;
 
 import com.vividsolutions.jts.io.ByteOrderValues;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
@@ -15,9 +18,15 @@ import org.h2.store.DataHandler;
 
 /**
  *
- * @author The_Artkitekt
+ * @author Thomas Crevoisier, Jules Party
  */
 public class ValueGeoRaster extends ValueLob {
+
+    static Value get(byte[] bytesNoCopy) {
+        InputStream bytesStream = new ByteArrayInputStream(bytesNoCopy);
+        long len = bytesNoCopy.length;
+        return ValueGeoRaster.createGeoRaster(bytesStream, len, null);
+    }
 
     protected short version;
 

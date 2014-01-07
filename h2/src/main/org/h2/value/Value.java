@@ -522,6 +522,7 @@ public abstract class Value {
     public Value convertTo(int targetType) {
         // converting NULL is done in ValueNull
         // converting BLOB to CLOB and vice versa is done in ValueLob
+        System.out.println(targetType);
         if (getType() == targetType) {
             return this;
         }
@@ -809,6 +810,12 @@ public abstract class Value {
                     if (DataType.isGeometry(object)) {
                         return ValueGeometry.getFromGeometry(object);
                     }
+                }
+                
+            case GEORASTER:
+                switch(getType()){
+                    case BYTES:
+                        return ValueGeoRaster.get(getBytesNoCopy());
                 }
             }
             // conversion by parsing the string value
