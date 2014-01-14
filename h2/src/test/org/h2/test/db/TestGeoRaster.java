@@ -7,6 +7,11 @@ package org.h2.test.db;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.Random;
 import org.h2.store.DataHandler;
 import org.h2.test.TestBase;
 import org.h2.value.ValueGeoRaster;
@@ -26,8 +31,71 @@ public class TestGeoRaster extends TestBase {
     }
     
     @Override
-    public void test(){
+    public void test() throws Exception {
+        testReadRaster();
+        testWriteRasterFromString();
+    }
+ 
+   
+    private void testReadRaster() throws Exception {
+        deleteDb("georaster");
+        Connection conn;
+        conn = getConnection("georaster");
+        Statement stat = conn.createStatement();
+                stat.execute("create table test(id identity, data georaster)");
         
+        PreparedStatement prep = conn.prepareStatement(
+                "insert into test values(null, ?)");
+        byte[] data = new byte[256];
+        Random r = new Random(1);
+        for (int i = 0; i < 1000; i++) {
+            r.nextBytes(data);
+            prep.setBinaryStream(1, new ByteArrayInputStream(data), -1);
+            prep.execute();
+        }
+
+        ResultSet rs = stat.executeQuery("select * from test");
+        while (rs.next()) {
+            rs.getString(2);
+        }
+        conn.close();
+    }
+    
+    private void testWriteRasterFromString() throws Exception {
+        String bytesString = "01"
+                + "0000"
+                + "0000"
+                + "0000000000000040"
+                + "0000000000000840"
+                + "000000000000E03F"
+                + "000000000000E03F"
+                + "0000000000000000"
+                + "0000000000000000"
+                + "00000000"
+                + "0A00"
+                + "1400";
+        
+        byte[] bytes = hexStringToByteArray(bytesString);
+        
+        InputStream bytesStream = new ByteArrayInputStream(bytes);
+        
+        deleteDb("georaster");
+        Connection conn;
+        conn = getConnection("georaster");
+        Statement stat = conn.createStatement();
+                stat.execute("create table test(id identity, data georaster)");
+        
+        PreparedStatement prep = conn.prepareStatement(
+                "insert into test values(null, ?)");
+
+        prep.setBinaryStream(1, bytesStream, -1);
+        prep.execute();
+
+        ResultSet rs = stat.executeQuery("select * from test");
+        while (rs.next()) {
+            rs.getString(2);
+        }
+        conn.close();
     }
     
     //@Test
