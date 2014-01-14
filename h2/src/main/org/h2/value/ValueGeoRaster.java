@@ -45,14 +45,24 @@ public class ValueGeoRaster extends ValueLob {
     protected int srid; /* spatial reference id */
     protected short width; /* pixel columns - max 65535 */
     protected short height; /* pixel rows - max 65535 */
-    //rt_band *bands; /* actual bands */
-   
+
+    /*
+     * Create a GeoRaster from a value lob
+     * 
+     */
     private ValueGeoRaster (ValueLob v){
         super(v.type , v.handler, v.fileName, v.tableId, v.objectId, v.linked, v.precision, v.compressed);
         small = v.small;
         hash = v.hash;
     }
     
+    /*
+     * Create a GeoRaster from a given byte input stream
+     * 
+     * @param in the InputStream to build the GeoRaster from
+     * 
+     * @return the ValueGeoRaster created
+     */
     public static ValueGeoRaster createGeoRaster(InputStream in, long length, DataHandler handler){
         try{
             ValueGeoRaster geoRaster = new ValueGeoRaster(ValueLob.createBlob(in, length, handler));
@@ -117,6 +127,14 @@ public class ValueGeoRaster extends ValueLob {
         }
     }
     
+    /*
+     * Convert an given array of bytes into a short int by precising the value of endian
+     * 
+     * @param buff the array of bytes to convert
+     * @param endian 2 for little endian and 1 for big endian
+     * 
+     * @return short the result of the conversion
+     */
     private static short getShort(byte[] buff, int endian){
         if(endian==1){
             return (short) (((buff[0] & 0xff) << 8)|((buff[1] & 0xff)));
@@ -125,6 +143,13 @@ public class ValueGeoRaster extends ValueLob {
         }
     }
     
+    /*
+     * Return the index of the first byte of the wanted band given its index
+     * 
+     * @param numBandQuery the number of the band wanted
+     * 
+     * @return getIndexBand the index of the wanted band
+     */
     public int getIndexBand(int numBandQuery){
         if(numBandQuery<0){
             numBandQuery=0;
