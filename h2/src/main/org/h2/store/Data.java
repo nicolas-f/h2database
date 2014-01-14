@@ -600,6 +600,7 @@ public class Data {
             }
             break;
         }
+        case Value.GEORASTER:
         case Value.BLOB:
         case Value.CLOB: {
             writeByte((byte) type);
@@ -794,6 +795,7 @@ public class Data {
             return ValueDouble.get(Double.longBitsToDouble(Long.reverse(readVarLong())));
         case Value.FLOAT:
             return ValueFloat.get(Float.intBitsToFloat(Integer.reverse(readVarInt())));
+        case Value.GEORASTER:
         case Value.BLOB:
         case Value.CLOB: {
             int smallLen = readVarInt();
@@ -1011,6 +1013,7 @@ public class Data {
         }
         case Value.UUID:
             return 1 + LENGTH_LONG + LENGTH_LONG;
+        case Value.GEORASTER:
         case Value.BLOB:
         case Value.CLOB: {
             int len = 1;

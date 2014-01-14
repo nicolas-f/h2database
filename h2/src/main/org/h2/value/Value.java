@@ -522,7 +522,7 @@ public abstract class Value {
     public Value convertTo(int targetType) {
         // converting NULL is done in ValueNull
         // converting BLOB to CLOB and vice versa is done in ValueLob
-        System.out.println(targetType);
+
         if (getType() == targetType) {
             return this;
         }
@@ -741,6 +741,7 @@ public abstract class Value {
             case BYTES: {
                 switch(getType()) {
                 case JAVA_OBJECT:
+                case GEORASTER:
                 case BLOB:
                     return ValueBytes.getNoCopy(getBytesNoCopy());
                 case UUID:
@@ -783,6 +784,7 @@ public abstract class Value {
             case JAVA_OBJECT: {
                 switch(getType()) {
                 case BYTES:
+                case GEORASTER:
                 case BLOB:
                     return ValueJavaObject.getNoCopy(null, getBytesNoCopy(), getDataHandler());
                 }
@@ -792,6 +794,13 @@ public abstract class Value {
                 switch(getType()) {
                 case BYTES:
                     return LobStorageFrontend.createSmallLob(Value.BLOB, getBytesNoCopy());
+                }
+                break;
+            }
+            case GEORASTER: {
+                switch(getType()) {
+                case BYTES:
+                    return LobStorageFrontend.createSmallLob(Value.GEORASTER, getBytesNoCopy());
                 }
                 break;
             }
@@ -811,13 +820,8 @@ public abstract class Value {
                         return ValueGeometry.getFromGeometry(object);
                     }
                 }
-                
-            case GEORASTER:
-                switch(getType()){
-                    case BYTES:
-                        return ValueGeoRaster.get(getBytesNoCopy());
-                }
             }
+                
             // conversion by parsing the string value
             String s = getString();
             switch (targetType) {
@@ -873,6 +877,8 @@ public abstract class Value {
                 return LobStorageFrontend.createSmallLob(CLOB, s.getBytes(Constants.UTF8));
             case BLOB:
                 return LobStorageFrontend.createSmallLob(BLOB, StringUtils.convertHexToBytes(s.trim()));
+            case GEORASTER:
+                return LobStorageFrontend.createSmallLob(GEORASTER, StringUtils.convertHexToBytes(s.trim()));
             case ARRAY:
                 return ValueArray.get(new Value[]{ValueString.get(s)});
             case RESULT_SET: {
