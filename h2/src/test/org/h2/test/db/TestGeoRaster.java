@@ -1,7 +1,4 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
+
 package org.h2.test.db;
 
 import java.io.ByteArrayInputStream;
@@ -20,7 +17,7 @@ import org.junit.Test;
 
 /**
  *
- * @author The_Artkitekt
+ * @author Thomas Crevoisier, Jules Party
  */
 public class TestGeoRaster extends TestBase {
 
@@ -67,12 +64,12 @@ public class TestGeoRaster extends TestBase {
                 + "0000"
                 + "0000000000000040"
                 + "0000000000000840"
-                + "000000000000E03F"
-                + "000000000000E03F"
+                + "000000000000e03F"
+                + "000000000000e03F"
                 + "0000000000000000"
                 + "0000000000000000"
                 + "00000000"
-                + "0A00"
+                + "0a00"
                 + "1400";
         
         byte[] bytes = hexStringToByteArray(bytesString);
@@ -92,25 +89,24 @@ public class TestGeoRaster extends TestBase {
         prep.execute();
 
         ResultSet rs = stat.executeQuery("select * from test");
-        while (rs.next()) {
-            rs.getString(2);
-        }
+        rs.next();
+        assertTrue(bytesString.equalsIgnoreCase(rs.getString(2)));
         conn.close();
     }
     
-    //@Test
+    @Test
     public void testEmptyGeoRaster() throws Exception {
         String bytesString = "01"
                 + "0000"
                 + "0000"
                 + "0000000000000040"
                 + "0000000000000840"
-                + "000000000000E03F"
-                + "000000000000E03F"
+                + "000000000000e03F"
+                + "000000000000e03F"
                 + "0000000000000000"
                 + "0000000000000000"
                 + "00000000"
-                + "0A00"
+                + "0a00"
                 + "1400";
         
         byte[] bytes = hexStringToByteArray(bytesString);
@@ -118,20 +114,20 @@ public class TestGeoRaster extends TestBase {
         InputStream bytesStream = new ByteArrayInputStream(bytes);
         long len = bytes.length;
         ValueGeoRaster testRaster = ValueGeoRaster.createGeoRaster(bytesStream, len, null);
-        Assert.assertTrue(testRaster.getVersion()==0);
-        Assert.assertTrue(testRaster.getNumBands()==0);
-        Assert.assertTrue(testRaster.getScaleX()==2);
-        Assert.assertTrue(testRaster.getScaleY()==3);
-        Assert.assertTrue(testRaster.getIpX()==0.5);
-        Assert.assertTrue(testRaster.getIpY()==0.5);
-        Assert.assertTrue(testRaster.getSkewX()==0);
-        Assert.assertTrue(testRaster.getSkewY()==0);
-        Assert.assertTrue(testRaster.getSrid()==0);
-        Assert.assertTrue(testRaster.getWidth()==10);
-        Assert.assertTrue(testRaster.getHeight()==20);
+        assertTrue(testRaster.getVersion()==0);
+        assertTrue(testRaster.getNumBands()==0);
+        assertTrue(testRaster.getScaleX()==2);
+        assertTrue(testRaster.getScaleY()==3);
+        assertTrue(testRaster.getIpX()==0.5);
+        assertTrue(testRaster.getIpY()==0.5);
+        assertTrue(testRaster.getSkewX()==0);
+        assertTrue(testRaster.getSkewY()==0);
+        assertTrue(testRaster.getSrid()==0);
+        assertTrue(testRaster.getWidth()==10);
+        assertTrue(testRaster.getHeight()==20);
     }
 
-    //@Test
+    @Test
     public void testGeoRasterWithBands() throws Exception {
         String bytesString = "01000003009A9999999999A93F9A9999999999A9BF000000E02B274A" +
 "41000000007719564100000000000000000000000000000000FFFFFFFF050005000400FDFEFDFEFEFDFEFEFDF9FAFEF" +
