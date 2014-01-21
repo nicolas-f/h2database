@@ -342,12 +342,12 @@ public class DataType {
                 104
         );
         add(Value.GEOMETRY, Types.OTHER, "Geometry",
-                createLob(),
+                createString(false),
                 new String[]{"GEOMETRY"},
                 32
         );
         add(Value.GEORASTER, Types.OTHER, "Georaster",
-                createString(false),
+                createLob(),
                 new String[]{"GEORASTER"},
                 104
         );
