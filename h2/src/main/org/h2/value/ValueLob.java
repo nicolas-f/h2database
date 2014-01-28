@@ -53,19 +53,19 @@ public class ValueLob extends Value {
      */
     private static int dirCounter;
 
-    private final int type;
-    private long precision;
-    private DataHandler handler;
-    private int tableId;
-    private int objectId;
-    private String fileName;
-    private boolean linked;
-    private byte[] small;
-    private int hash;
-    private boolean compressed;
-    private FileStore tempFile;
+    protected final int type;
+    protected long precision;
+    protected DataHandler handler;
+    protected int tableId;
+    protected int objectId;
+    protected String fileName;
+    protected boolean linked;
+    protected byte[] small;
+    protected int hash;
+    protected boolean compressed;
+    protected FileStore tempFile;
 
-    private ValueLob(int type, DataHandler handler, String fileName, int tableId, int objectId, boolean linked,
+    protected ValueLob(int type, DataHandler handler, String fileName, int tableId, int objectId, boolean linked,
             long precision, boolean compressed) {
         this.type = type;
         this.handler = handler;
@@ -77,7 +77,7 @@ public class ValueLob extends Value {
         this.compressed = compressed;
     }
 
-    private ValueLob(int type, byte[] small) {
+    protected ValueLob(int type, byte[] small) {
         this.type = type;
         this.small = small;
         if (small != null) {

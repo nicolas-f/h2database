@@ -161,9 +161,14 @@ public abstract class Value {
     public static final int GEOMETRY = 22;
 
     /**
+     * The value type for georeferenced raster.
+     */
+     public static final int GEORASTER = 23;
+
+    /*
      * The number of value types.
      */
-    public static final int TYPE_COUNT = GEOMETRY + 1;
+    public static final int TYPE_COUNT = GEORASTER + 1;
 
     private static SoftReference<Value[]> softCache = new SoftReference<Value[]>(null);
     private static final BigDecimal MAX_LONG_DECIMAL = BigDecimal.valueOf(Long.MAX_VALUE);
@@ -305,6 +310,8 @@ public abstract class Value {
             return 43;
         case GEOMETRY:
             return 44;
+        case GEORASTER:
+            return 45;
         case ARRAY:
             return 50;
         case RESULT_SET:
