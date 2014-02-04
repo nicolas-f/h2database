@@ -44,7 +44,6 @@ public class TestPageStore extends TestBase {
      */
     public static void main(String... a) throws Exception {
         System.setProperty("h2.check2", "true");
-        System.setProperty("h2.lobInDatabase", "true");
         TestBase.createCaller().init().test();
     }
 
@@ -71,7 +70,6 @@ public class TestPageStore extends TestBase {
         testLargeInserts();
         testLargeDatabaseFastOpen();
         testUniqueIndexReopen();
-        testExistingOld();
         testLargeRows();
         testRecoverDropIndex();
         testDropPk();
@@ -524,26 +522,6 @@ public class TestPageStore extends TestBase {
         conn.close();
         conn = getConnection(url);
         assertThrows(ErrorCode.DUPLICATE_KEY_1, conn.createStatement()).execute("INSERT INTO TEST VALUES(2, 'Hello')");
-        conn.close();
-    }
-
-    private void testExistingOld() throws SQLException {
-        if (config.memory) {
-            return;
-        }
-        Connection conn;
-        deleteDb("pageStoreExistingOld");
-        String url;
-        url = "jdbc:h2:" + getBaseDir() + "/pageStoreExistingOld";
-        conn = DriverManager.getConnection(url);
-        conn.createStatement().execute("create table test(id int) as select 1");
-        conn.close();
-        conn = DriverManager.getConnection(url);
-        conn.createStatement().execute("select * from test");
-        conn.close();
-        // the database is automatically converted
-        conn = DriverManager.getConnection(url);
-        assertResult("1", conn.createStatement(), "select * from test");
         conn.close();
     }
 

@@ -459,6 +459,13 @@ public class ErrorCode {
     public static final int TRIGGER_SELECT_AND_ROW_BASED_NOT_SUPPORTED = 90005;
 
     /**
+     * The error with code <code>90006</code> is thrown when
+     * trying to get a value from a sequence that has run out of numbers
+     * and does not have cycling enabled.
+     */
+    public static final int SEQUENCE_EXHAUSTED = 90006;
+
+    /**
      * The error with code <code>90007</code> is thrown when
      * trying to call a JDBC method on an object that has been closed.
      */
@@ -473,6 +480,20 @@ public class ErrorCode {
      * </pre>
      */
     public static final int INVALID_VALUE_2 = 90008;
+
+    /**
+     * The error with code <code>90009</code> is thrown when
+     * trying to create a sequence with an invalid combination
+     * of attributes (min value, max value, start value, etc).
+     */
+    public static final int SEQUENCE_ATTRIBUTES_INVALID = 90009;
+
+    /**
+     * The error with code <code>90010</code> is thrown when
+     * trying to format a timestamp or number using TO_CHAR
+     * with an invalid format.
+     */
+    public static final int INVALID_TO_CHAR_FORMAT = 90010;
 
     /**
      * The error with code <code>22007</code> is thrown when
@@ -1114,7 +1135,7 @@ public class ErrorCode {
 
     /**
      * The error with code <code>90072</code> is thrown when
-     * trying to grant or revoke if no role or user with that name exists.
+     * trying to grant or revoke both roles and rights at the same time.
      * Example:
      * <pre>
      * GRANT SELECT, TEST_ROLE ON TEST TO SA;
@@ -1276,14 +1297,14 @@ public class ErrorCode {
      * <pre>
      * CREATE TABLE TEST(ID INT, CONSTRAINT UID UNIQUE(ID));
      * DROP INDEX UID_INDEX_0;
-     * Index UID_INDEX_0 belongs to a constraint
+     * Index UID_INDEX_0 belongs to constraint UID
      * </pre>
      * Correct:
      * <pre>
      * ALTER TABLE TEST DROP CONSTRAINT UID;
      * </pre>
      */
-    public static final int INDEX_BELONGS_TO_CONSTRAINT_1 = 90085;
+    public static final int INDEX_BELONGS_TO_CONSTRAINT_2 = 90085;
 
     /**
      * The error with code <code>90086</code> is thrown when
@@ -1700,9 +1721,12 @@ public class ErrorCode {
     /**
      * The error with code <code>90127</code> is thrown when
      * trying to update or delete a row in a result set if the result set is
-     * not updatable. Result sets are only updatable if the statement was
-     * created with updatable concurrency, and if the result set contains
-     * all columns of the primary key or of a unique index of a table.
+     * not updatable. Result sets are only updatable if:
+     * the statement was created with updatable concurrency;
+     * all columns of the result set are from the same table;
+     * the table is a data table (not a system table or view);
+     * all columns of the primary key or any unique index are included;
+     * all columns of the result set are columns of that table.
      */
     public static final int RESULT_SET_NOT_UPDATABLE = 90127;
 
@@ -1870,7 +1894,7 @@ public class ErrorCode {
     public static final int JAVA_OBJECT_SERIALIZER_CHANGE_WITH_DATA_TABLE = 90141;
 
 
-    // next are 90006, 90009, 90010, 90011, 90021, 90039,
+    // next are 90011, 90021, 90039,
     // 90051, 90056, 90110, 90122, 90142
 
     private ErrorCode() {

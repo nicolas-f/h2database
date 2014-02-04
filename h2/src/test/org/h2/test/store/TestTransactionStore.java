@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.h2.mvstore.DataUtils;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
 import org.h2.mvstore.db.TransactionStore;
@@ -45,6 +46,10 @@ public class TestTransactionStore extends TestBase {
     @Override
     public void test() throws Exception {
         FileUtils.createDirectories(getBaseDir());
+        testCountWithOpenTransactions();
+        testConcurrentUpdate();
+        testRepeatedChange();
+        testTransactionAge();
         testStopWhileCommitting();
         testGetModifiedMaps();
         testKeyIterator();
@@ -56,9 +61,134 @@ public class TestTransactionStore extends TestBase {
         testCompareWithPostgreSQL();
     }
 
+    private void testCountWithOpenTransactions() {
+        MVStore s;
+        TransactionStore ts;
+        s = MVStore.open(null);
+        ts = new TransactionStore(s);
+
+        Transaction tx1 = ts.begin();
+        TransactionMap<Integer, Integer> map1 = tx1.openMap("data");
+        int size = 150;
+        for (int i = 0; i < size; i++) {
+            map1.put(i, i * 10);
+        }
+        tx1.commit();
+        tx1 = ts.begin();
+        map1 = tx1.openMap("data");
+
+        Transaction tx2 = ts.begin();
+        TransactionMap<Integer, Integer> map2 = tx2.openMap("data");
+
+        Random r = new Random(1);
+        for (int i = 0; i < size * 3; i++) {
+            assertEquals("op: " + i, size, (int) map1.sizeAsLong());
+            // keep the first 10%, and add 10%
+            int k = size / 10 + r.nextInt(size);
+            if (r.nextBoolean()) {
+                map2.remove(k);
+            } else {
+                map2.put(k, i);
+            }
+        }
+        s.close();
+    }
+
+    private void testConcurrentUpdate() {
+        MVStore s;
+        TransactionStore ts;
+        s = MVStore.open(null);
+        ts = new TransactionStore(s);
+
+        Transaction tx1 = ts.begin();
+        TransactionMap<Integer, Integer> map1 = tx1.openMap("data");
+        map1.put(1, 10);
+
+        Transaction tx2 = ts.begin();
+        TransactionMap<Integer, Integer> map2 = tx2.openMap("data");
+        try {
+            map2.put(1, 20);
+            fail();
+        } catch (IllegalStateException e) {
+            assertEquals(DataUtils.ERROR_TRANSACTION_LOCKED,
+                    DataUtils.getErrorCode(e.getMessage()));
+        }
+        assertEquals(10, map1.get(1).intValue());
+        assertNull(map2.get(1));
+        tx1.commit();
+        assertEquals(10, map2.get(1).intValue());
+
+        s.close();
+    }
+
+    private void testRepeatedChange() {
+        MVStore s;
+        TransactionStore ts;
+        s = MVStore.open(null);
+        ts = new TransactionStore(s);
+
+        Transaction tx0 = ts.begin();
+        TransactionMap<Integer, Integer> map0 = tx0.openMap("data");
+        map0.put(1, -1);
+        tx0.commit();
+
+        Transaction tx = ts.begin();
+        TransactionMap<Integer, Integer> map = tx.openMap("data");
+        for (int i = 0; i < 2000; i++) {
+            map.put(1, i);
+        }
+
+        Transaction tx2 = ts.begin();
+        TransactionMap<Integer, Integer> map2 = tx2.openMap("data");
+        assertEquals(-1, map2.get(1).intValue());
+
+        s.close();
+    }
+
+    private void testTransactionAge() throws Exception {
+        MVStore s;
+        TransactionStore ts;
+        s = MVStore.open(null);
+        ts = new TransactionStore(s);
+        ts.setMaxTransactionId(16);
+        for (int i = 0, j = 1; i < 64; i++) {
+            Transaction t = ts.begin();
+            assertEquals(j, t.getId());
+            t.commit();
+            j++;
+            if (j > 16) {
+                j = 1;
+            }
+        }
+        s = MVStore.open(null);
+        ts = new TransactionStore(s);
+        ts.setMaxTransactionId(16);
+        ArrayList<Transaction> fifo = New.arrayList();
+        int open = 0;
+        for (int i = 0; i < 64; i++) {
+            Transaction t = ts.begin();
+            if (open >= 16) {
+                try {
+                    t.openMap("data").put(i, i);
+                    fail();
+                } catch (IllegalStateException e) {
+                    // expected - too many open
+                }
+                Transaction first = fifo.remove(0);
+                first.commit();
+                open--;
+            }
+            fifo.add(t);
+            open++;
+            t.openMap("data").put(i, i);
+        }
+        s.close();
+    }
+
     private void testStopWhileCommitting() throws Exception {
         String fileName = getBaseDir() + "/testStopWhileCommitting.h3";
         FileUtils.delete(fileName);
+        Random r = new Random(0);
 
         for (int i = 0; i < 10;) {
             MVStore s;
@@ -85,7 +215,7 @@ public class TestTransactionStore extends TestBase {
                     for (int i = 0; !stop; i++) {
                         state.set(i);
                         other.put(i, value);
-                        store.store();
+                        store.commit();
                     }
                 }
             };
@@ -100,6 +230,16 @@ public class TestTransactionStore extends TestBase {
             task.get();
             store.close();
             s = MVStore.open(fileName);
+            // roll back a bit, until we have some undo log entries
+            assertTrue(s.hasMap("undoLog"));
+            for (int back = 0; back < 100; back++) {
+                int minus = r.nextInt(10);
+                s.rollbackTo(Math.max(0, s.getCurrentVersion() - minus));
+                MVMap<?, ?> undo = s.openMap("undoLog");
+                if (undo.size() > 0) {
+                    break;
+                }
+            }
             ts = new TransactionStore(s);
             List<Transaction> list = ts.getOpenTransactions();
             if (list.size() != 0) {
@@ -111,10 +251,6 @@ public class TestTransactionStore extends TestBase {
             s.close();
             FileUtils.delete(fileName);
             assertFalse(FileUtils.exists(fileName));
-            FileUtils.delete(fileName);
-            assertFalse(FileUtils.exists(fileName));
-            s.close();
-            FileUtils.delete(fileName);
         }
     }
 
@@ -335,7 +471,7 @@ public class TestTransactionStore extends TestBase {
         assertEquals(null, tx.getName());
         tx.setName("first transaction");
         assertEquals("first transaction", tx.getName());
-        assertEquals(0, tx.getId());
+        assertEquals(1, tx.getId());
         assertEquals(Transaction.STATUS_OPEN, tx.getStatus());
         m = tx.openMap("test");
         m.put("1", "Hello");
@@ -343,6 +479,7 @@ public class TestTransactionStore extends TestBase {
         assertEquals(1, list.size());
         txOld = list.get(0);
         assertTrue(tx.getId() == txOld.getId());
+        assertEquals("first transaction", txOld.getName());
         s.commit();
         ts.close();
         s.close();
@@ -350,14 +487,14 @@ public class TestTransactionStore extends TestBase {
         s = MVStore.open(fileName);
         ts = new TransactionStore(s);
         tx = ts.begin();
-        assertEquals(1, tx.getId());
+        assertEquals(2, tx.getId());
         m = tx.openMap("test");
         assertEquals(null, m.get("1"));
         m.put("2", "Hello");
         list = ts.getOpenTransactions();
         assertEquals(2, list.size());
         txOld = list.get(0);
-        assertEquals(0, txOld.getId());
+        assertEquals(1, txOld.getId());
         assertEquals(Transaction.STATUS_OPEN, txOld.getStatus());
         assertEquals("first transaction", txOld.getName());
         txOld.prepare();
@@ -369,17 +506,16 @@ public class TestTransactionStore extends TestBase {
         ts = new TransactionStore(s);
         tx = ts.begin();
         m = tx.openMap("test");
-        // TransactionStore was not closed, so we lost some ids
-        assertEquals(65, tx.getId());
+        assertEquals(2, tx.getId());
         list = ts.getOpenTransactions();
         assertEquals(2, list.size());
         txOld = list.get(1);
-        assertEquals(1, txOld.getId());
+        assertEquals(2, txOld.getId());
         assertEquals(Transaction.STATUS_OPEN, txOld.getStatus());
         assertEquals(null, txOld.getName());
         txOld.rollback();
         txOld = list.get(0);
-        assertEquals(0, txOld.getId());
+        assertEquals(1, txOld.getId());
         assertEquals(Transaction.STATUS_PREPARED, txOld.getStatus());
         assertEquals("first transaction", txOld.getName());
         txOld.commit();

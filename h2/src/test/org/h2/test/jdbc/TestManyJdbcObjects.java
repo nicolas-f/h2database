@@ -13,7 +13,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-import org.h2.constant.SysProperties;
 import org.h2.test.TestBase;
 
 /**
@@ -61,7 +60,6 @@ public class TestManyJdbcObjects extends TestBase {
         // SERVER_CACHED_OBJECTS = 500: connections = 40
         // SERVER_CACHED_OBJECTS = 50: connections = 120
         deleteDb("manyObjects");
-        SysProperties.runFinalize = false;
         int connCount = getSize(4, 40);
         Connection[] conn = new Connection[connCount];
         for (int i = 0; i < connCount; i++) {
@@ -79,12 +77,10 @@ public class TestManyJdbcObjects extends TestBase {
         for (int i = 0; i < connCount; i++) {
             conn[i].close();
         }
-        SysProperties.runFinalize = true;
     }
 
     private void testOneConnectionPrepare() throws SQLException {
         deleteDb("manyObjects");
-        SysProperties.runFinalize = false;
         Connection conn = getConnection("manyObjects");
         PreparedStatement prep;
         Statement stat;
@@ -115,7 +111,6 @@ public class TestManyJdbcObjects extends TestBase {
         for (int i = 0; i < size; i++) {
             prep.executeQuery();
         }
-        SysProperties.runFinalize = true;
         conn.close();
     }
 

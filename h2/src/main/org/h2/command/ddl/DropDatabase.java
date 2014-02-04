@@ -47,43 +47,49 @@ public class DropDatabase extends DefineCommand {
         session.commit(true);
         Database db = session.getDatabase();
         db.lockMeta(session);
-        // TODO local temp tables are not removed
-        for (Schema schema : db.getAllSchemas()) {
-            if (schema.canDrop()) {
-                db.removeDatabaseObject(session, schema);
-            }
-        }
-        ArrayList<Table> tables = db.getAllTablesAndViews(false);
-        for (Table t : tables) {
-            if (t.getName() != null && Table.VIEW.equals(t.getTableType())) {
-                db.removeSchemaObject(session, t);
-            }
-        }
-        for (Table t : tables) {
-            if (t.getName() != null && Table.TABLE_LINK.equals(t.getTableType())) {
-                db.removeSchemaObject(session, t);
-            }
-        }
 
         // There can be dependencies between tables e.g. using computed columns,
         // so we might need to loop over them multiple times.
-        boolean runLoopAgain = false;
+        boolean runLoopAgain;
         do {
-            runLoopAgain = false;
+            ArrayList<Table> tables = db.getAllTablesAndViews(false);
+            ArrayList<Table> toRemove = New.arrayList();
+            for (Table t : tables) {
+                if (t.getName() != null && Table.VIEW.equals(t.getTableType())) {
+                    toRemove.add(t);
+                }
+            }
+            for (Table t : tables) {
+                if (t.getName() != null && Table.TABLE_LINK.equals(t.getTableType())) {
+                    toRemove.add(t);
+                }
+            }
             for (Table t : tables) {
                 if (t.getName() != null && Table.TABLE.equals(t.getTableType()) && !t.isHidden()) {
-                    if (db.getDependentTable(t, t) == null) {
-                        db.removeSchemaObject(session, t);
-                    } else {
-                        runLoopAgain = true;
-                    }
+                    toRemove.add(t);
+                }
+            }
+            for (Table t : tables) {
+                if (t.getName() != null && Table.EXTERNAL_TABLE_ENGINE.equals(t.getTableType()) && !t.isHidden()) {
+                    toRemove.add(t);
+                }
+            }
+            runLoopAgain = false;
+            for (Table t : toRemove) {
+                if (t.getName() == null) {
+                    // ignore
+                } else if (db.getDependentTable(t, t) == null) {
+                    db.removeSchemaObject(session, t);
+                } else {
+                    runLoopAgain = true;
                 }
             }
         } while (runLoopAgain);
 
-        for (Table t : tables) {
-            if (t.getName() != null && Table.EXTERNAL_TABLE_ENGINE.equals(t.getTableType()) && !t.isHidden()) {
-                db.removeSchemaObject(session, t);
+        // TODO local temp tables are not removed
+        for (Schema schema : db.getAllSchemas()) {
+            if (schema.canDrop()) {
+                db.removeDatabaseObject(session, schema);
             }
         }
         session.findLocalTempTable(null);

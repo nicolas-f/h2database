@@ -16,9 +16,9 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+
 import org.h2.constant.ErrorCode;
 import org.h2.constant.SysProperties;
-import org.h2.engine.Constants;
 import org.h2.engine.Database;
 import org.h2.jdbc.JdbcConnection;
 import org.h2.message.DbException;
@@ -26,14 +26,12 @@ import org.h2.tools.CompressTool;
 import org.h2.util.IOUtils;
 import org.h2.util.MathUtils;
 import org.h2.util.New;
-import org.h2.util.Utils;
 import org.h2.value.Value;
-import org.h2.value.ValueLob;
 import org.h2.value.ValueLobDb;
 
 /**
- * This class stores LOB objects in the database. This is the back-end i.e. the
- * server side of the LOB storage.
+ * This class stores LOB objects in the database, in tables. This is the
+ * back-end i.e. the server side of the LOB storage.
  * <p>
  * Using the system session
  * <p>
@@ -41,9 +39,10 @@ import org.h2.value.ValueLobDb;
  * take a very long time. If we did them on a normal session, we would be
  * locking the LOB tables for long periods of time, which is extremely
  * detrimental to the rest of the system. Perhaps when we shift to the MVStore
- * engine, we can revisit this design decision.
+ * engine, we can revisit this design decision (using the StreamStore, that is,
+ * no connection at all).
  * <p>
- * Locking Discussion
+ * Locking
  * <p>
  * Normally, the locking order in H2 is: first lock the Session object, then
  * lock the Database object. However, in the case of the LOB data, we are using
@@ -67,10 +66,6 @@ import org.h2.value.ValueLobDb;
  */
 public class LobStorageBackend implements LobStorageInterface {
 
-    /**
-     * Locking Discussion
-     * --------------------
-     */
     /**
      * The name of the lob data table. If this table exists, then lob storage is
      * used.
@@ -107,9 +102,7 @@ public class LobStorageBackend implements LobStorageInterface {
         this.database = database;
     }
 
-    /**
-     * Initialize the lob storage.
-     */
+    @Override
     public void init() {
         if (init) {
             return;
@@ -189,33 +182,24 @@ public class LobStorageBackend implements LobStorageInterface {
         return x;
     }
 
-    /**
-     * Remove all LOBs for this table.
-     *
-     * @param tableId the table id
-     */
+    @Override
     public void removeAllForTable(int tableId) {
-        if (SysProperties.LOB_IN_DATABASE) {
-            init();
-            try {
-                String sql = "SELECT ID FROM " + LOBS + " WHERE TABLE = ?";
-                PreparedStatement prep = prepare(sql);
-                prep.setInt(1, tableId);
-                ResultSet rs = prep.executeQuery();
-                while (rs.next()) {
-                    removeLob(rs.getLong(1));
-                }
-                reuse(sql, prep);
-            } catch (SQLException e) {
-                throw DbException.convert(e);
+        init();
+        try {
+            String sql = "SELECT ID FROM " + LOBS + " WHERE TABLE = ?";
+            PreparedStatement prep = prepare(sql);
+            prep.setInt(1, tableId);
+            ResultSet rs = prep.executeQuery();
+            while (rs.next()) {
+                removeLob(rs.getLong(1));
             }
-            if (tableId == LobStorageFrontend.TABLE_ID_SESSION_VARIABLE) {
-                removeAllForTable(LobStorageFrontend.TABLE_TEMP);
-            }
-            // remove both lobs in the database as well as in the file system
-            // (compatibility)
+            reuse(sql, prep);
+        } catch (SQLException e) {
+            throw DbException.convert(e);
         }
-        ValueLob.removeAllForTable(database, tableId);
+        if (tableId == LobStorageFrontend.TABLE_ID_SESSION_VARIABLE) {
+            removeAllForTable(LobStorageFrontend.TABLE_TEMP);
+        }
     }
 
     /**
@@ -283,7 +267,11 @@ public class LobStorageBackend implements LobStorageInterface {
     }
 
     @Override
-    public void removeLob(long lob) {
+    public void removeLob(ValueLobDb lob) {
+        removeLob(lob.getLobId());
+    }
+
+    private void removeLob(long lobId) {
         try {
             // see locking discussion at the top
             assertNotHolds(conn.getSession());
@@ -293,8 +281,8 @@ public class LobStorageBackend implements LobStorageInterface {
                             "AND NOT EXISTS(SELECT 1 FROM " + LOB_MAP + " O " +
                             "WHERE O.BLOCK = D.BLOCK AND O.LOB <> ?)";
                     PreparedStatement prep = prepare(sql);
-                    prep.setLong(1, lob);
-                    prep.setLong(2, lob);
+                    prep.setLong(1, lobId);
+                    prep.setLong(2, lobId);
                     ResultSet rs = prep.executeQuery();
                     ArrayList<Long> blocks = New.arrayList();
                     while (rs.next()) {
@@ -306,7 +294,7 @@ public class LobStorageBackend implements LobStorageInterface {
 
                     sql = "DELETE FROM " + LOB_MAP + " WHERE LOB = ?";
                     prep = prepare(sql);
-                    prep.setLong(1, lob);
+                    prep.setLong(1, lobId);
                     prep.execute();
                     reuse(sql, prep);
 
@@ -320,7 +308,7 @@ public class LobStorageBackend implements LobStorageInterface {
 
                     sql = "DELETE FROM " + LOBS + " WHERE ID = ?";
                     prep = prepare(sql);
-                    prep.setLong(1, lob);
+                    prep.setLong(1, lobId);
                     prep.execute();
                     reuse(sql, prep);
                 }
@@ -331,13 +319,14 @@ public class LobStorageBackend implements LobStorageInterface {
     }
 
     @Override
-    public InputStream getInputStream(long lobId, byte[] hmac, long byteCount) throws IOException {
+    public InputStream getInputStream(ValueLobDb lob, byte[] hmac, long byteCount) throws IOException {
         try {
             init();
             assertNotHolds(conn.getSession());
             // see locking discussion at the top
             synchronized (database) {
                 synchronized (conn.getSession()) {
+                    long lobId = lob.getLobId();
                     return new LobInputStream(lobId, byteCount);
                 }
             }
@@ -360,7 +349,7 @@ public class LobStorageBackend implements LobStorageInterface {
                 byte[] small = null;
                 for (int seq = 0; maxLength > 0; seq++) {
                     int len = (int) Math.min(BLOCK_LENGTH, maxLength);
-                    len = IOUtils.readFully(in, buff, 0, len);
+                    len = IOUtils.readFully(in, buff, len);
                     if (len <= 0) {
                         break;
                     }
@@ -434,7 +423,9 @@ public class LobStorageBackend implements LobStorageInterface {
     }
 
     @Override
-    public ValueLobDb copyLob(int type, long oldLobId, int tableId, long length) {
+    public ValueLobDb copyLob(ValueLobDb old, int tableId, long length) {
+        int type = old.getType();
+        long oldLobId = old.getLobId();
         assertNotHolds(conn.getSession());
         // see locking discussion at the top
         synchronized (database) {
@@ -553,27 +544,22 @@ public class LobStorageBackend implements LobStorageInterface {
 
     @Override
     public Value createBlob(InputStream in, long maxLength) {
-        if (SysProperties.LOB_IN_DATABASE) {
-            init();
-            return addLob(in, maxLength, Value.BLOB, null);
-        }
-        return ValueLob.createBlob(in, maxLength, database);
+        init();
+        return addLob(in, maxLength, Value.BLOB, null);
     }
 
     @Override
     public Value createClob(Reader reader, long maxLength) {
-        if (SysProperties.LOB_IN_DATABASE) {
-            init();
-            long max = maxLength == -1 ? Long.MAX_VALUE : maxLength;
-            CountingReaderInputStream in = new CountingReaderInputStream(reader, max);
-            ValueLobDb lob = addLob(in, Long.MAX_VALUE, Value.CLOB, in);
-            return lob;
-        }
-        return ValueLob.createClob(reader, maxLength, database);
+        init();
+        long max = maxLength == -1 ? Long.MAX_VALUE : maxLength;
+        CountingReaderInputStream in = new CountingReaderInputStream(reader, max);
+        ValueLobDb lob = addLob(in, Long.MAX_VALUE, Value.CLOB, in);
+        return lob;
     }
 
     @Override
-    public void setTable(long lobId, int table) {
+    public void setTable(ValueLobDb lob, int table) {
+        long lobId = lob.getLobId();
         assertNotHolds(conn.getSession());
         // see locking discussion at the top
         synchronized (database) {
@@ -779,86 +765,6 @@ public class LobStorageBackend implements LobStorageInterface {
             } catch (SQLException e) {
                 throw DbException.convertToIOException(e);
             }
-        }
-
-    }
-
-    /**
-     * An input stream that reads the data from a reader.
-     */
-    static class CountingReaderInputStream extends InputStream {
-
-        private final Reader reader;
-        /**
-         * total length of Reader data in chars
-         */
-        private long length;
-        private long remaining;
-        private int pos;
-        private final char[] charBuffer = new char[Constants.IO_BUFFER_SIZE];
-        private byte[] buffer;
-
-        CountingReaderInputStream(Reader reader, long maxLength) {
-            this.reader = reader;
-            this.remaining = maxLength;
-            buffer = Utils.EMPTY_BYTES;
-        }
-
-        @Override
-        public int read(byte[] buff, int offset, int len) throws IOException {
-            if (buffer == null) {
-                return -1;
-            }
-            if (pos >= buffer.length) {
-                fillBuffer();
-                if (buffer == null) {
-                    return -1;
-                }
-            }
-            len = Math.min(len, buffer.length - pos);
-            System.arraycopy(buffer, pos, buff, offset, len);
-            pos += len;
-            return len;
-        }
-
-        @Override
-        public int read() throws IOException {
-            if (buffer == null) {
-                return -1;
-            }
-            if (pos >= buffer.length) {
-                fillBuffer();
-                if (buffer == null) {
-                    return -1;
-                }
-            }
-            return buffer[pos++];
-        }
-
-        private void fillBuffer() throws IOException {
-            int len = (int) Math.min(charBuffer.length, remaining);
-            if (len > 0) {
-                len = reader.read(charBuffer, 0, len);
-            } else {
-                len = -1;
-            }
-            if (len < 0) {
-                buffer = null;
-            } else {
-                buffer = new String(charBuffer, 0, len).getBytes(Constants.UTF8);
-                length += len;
-                remaining -= len;
-            }
-            pos = 0;
-        }
-
-        public long getLength() {
-            return length;
-        }
-
-        @Override
-        public void close() throws IOException {
-            reader.close();
         }
 
     }

@@ -53,16 +53,16 @@ MVStore
 <h2 id="overview">Overview</h2>
 <p>
 The MVStore is work in progress, and is planned to be the next storage subsystem of H2.
-But it can be also directly within an application, without using JDBC or SQL.
+But it can also be used directly within an application, without using JDBC or SQL.
 </p>
 <ul><li>MVStore stands for "multi-version store".
-</li><li>Each store contains a number of maps (using the <code>java.util.Map</code> interface).
+</li><li>Each store contains a number of maps that can be accessed using the <code>java.util.Map</code> interface.
 </li><li>Both file-based persistence and in-memory operation are supported.
 </li><li>It is intended to be fast, simple to use, and small.
 </li><li>Old versions of the data can be read concurrently with all other operations.
 </li><li>Transaction are supported (including concurrent transactions and 2-phase commit).
 </li><li>The tool is very modular.
-    It supports pluggable data types / serialization,
+    It supports pluggable data types and serialization,
     pluggable storage (to a file, to off-heap memory),
     pluggable map implementations (B-tree, R-tree, concurrent B-tree currently),
     BLOB storage,
@@ -86,10 +86,7 @@ MVMap&lt;Integer, String&gt; map = s.openMap("data");
 map.put(1, "Hello World");
 System.out.println(map.get(1));
 
-// mark the changes as committed
-s.commit();
-
-// close the store (this will store committed changes)
+// close the store (this will persist changes)
 s.close();
 </pre>
 
@@ -97,23 +94,21 @@ s.close();
 <p>
 The <code>MVStore.Builder</code> provides a fluid interface
 to build a store if more complex configuration options are used.
-The following code contains all supported configuration options:
+Example usage:
 </p>
 <pre>
 MVStore s = new MVStore.Builder().
-    backgroundExceptionListener(listener).
-    cacheSize(10).
-    compressData().
-    encryptionKey("007".toCharArray()).
     fileName(fileName).
-    fileStore(new FileStore()).
-    pageSplitSize(6 * 1024).
-    readOnly().
-    writeBufferSize(8).
-    writeDelay(100).
+    encryptionKey("007".toCharArray()).
+    compressData().
     open();
 </pre>
-<ul><li>backgroundExceptionListener: a listener for
+<p>
+The list of available options is:
+</p>
+<ul><li>autoCommitBufferSize: the size of the write buffer.
+</li><li>autoCommitDisabled: to disable auto-commit.
+</li><li>backgroundExceptionHandler: specify a handler for
     exceptions that could occur while writing in the background.
 </li><li>cacheSize: the cache size in MB.
 </li><li>compressData: compress the data when storing.
@@ -122,9 +117,6 @@ MVStore s = new MVStore.Builder().
 </li><li>fileStore: the storage implementation to use.
 </li><li>pageSplitSize: the point where pages are split.
 </li><li>readOnly: open the file in read-only mode.
-</li><li>writeBufferSize: the size of the write buffer in MB.
-</li><li>writeDelay: the maximum delay in milliseconds
-    until committed changes are stored in the background.
 </li></ul>
 
 <h2 id="r_tree">R-Tree</h2>
@@ -185,15 +177,11 @@ the key of the map must also contain the primary key).
 
 <h3 id="versions">Versions</h3>
 <p>
-Multiple versions are supported.
 A version is a snapshot of all the data of all maps at a given point in time.
-Versions are not immediately persisted; instead, only the version counter is incremented.
-If there is a change after switching to a new version, a snapshot of the old version is kept in memory,
-so that it can still be read.
-Old persisted versions are readable until the old data was explicitly overwritten.
-Creating a snapshot is fast: only the pages that are changed after a snapshot are copied.
+Creating a snapshot is fast: only those pages that are changed after a snapshot are copied.
 This behavior is also called COW (copy on write).
-Rollback is supported (rollback to any old in-memory version or an old persisted version).
+Rollback to an old version is supported.
+Old versions are readable until old data is purged.
 </p><p>
 The following sample code show how to create a store, open a map, add some data,
 and access the current and an old version:
@@ -210,7 +198,7 @@ map.put(2, "World");
 long oldVersion = s.getCurrentVersion();
 
 // from now on, the old version is read-only
-s.incrementVersion();
+s.commit();
 
 // more changes, in the new version
 // changes can be rolled back if required
@@ -222,15 +210,11 @@ map.remove(2);
 MVMap&lt;Integer, String&gt; oldMap =
         map.openVersion(oldVersion);
 
-// mark the changes as committed
-s.commit();
-
 // print the old version (can be done
 // concurrently with further modifications)
 // this will print "Hello" and "World":
 System.out.println(oldMap.get(1));
 System.out.println(oldMap.get(2));
-oldMap.close();
 
 // print the newest version ("Hi")
 System.out.println(map.get(1));
@@ -265,6 +249,12 @@ Except for persisting data, all features are supported in this mode
 (multi-versioning, index lookup, R-tree and so on).
 If a file name is specified, all operations occur in memory (with the same
 performance characteristics) until data is persisted.
+</p><p>
+As in all map implementations, keys need to be immutable, that means
+changing the key object after an entry has been added is not allowed.
+If a file name is specified, the value may also not be changed after
+adding an entry, because it might be serialized
+(which could happen at any time when autocommit is enabled).
 </p>
 
 <h3 id="dataTypes">Pluggable Data Types</h3>
@@ -275,7 +265,7 @@ and uses Java serialization for other objects. The following classes are current
 String, UUID, Date</code> and arrays (both primitive arrays and object arrays).
 </p><p>
 Parameterized data types are supported
-(for example one could build a string data type that limits the length for some reason).
+(for example one could build a string data type that limits the length).
 </p><p>
 The storage engine itself does not have any length limits, so that keys, values,
 pages, and chunks can be very big (as big as fits in memory).
@@ -332,14 +322,14 @@ The plan is to add such a mechanism later when needed.
 <p>
 Internally, changes are buffered in memory, and once enough changes have accumulated,
 they are written in one continuous disk write operation.
+Compared to traditional database storage engines,
+this should improve write performance for file systems and storage systems
+that do not efficiently support small random writes, such as Btrfs, as well as SSDs.
 (According to a test, write throughput of a common SSD increases with write block size,
 until a block size of 2 MB, and then does not further increase.)
-By default, committed changes are automatically written once every second
-in a background thread, even if only little data was changed.
-Changes can also be written explicitly by calling <code>store()</code>.
-To avoid running out of memory, uncommitted changes are also written when needed,
-however they are rolled back when closing the store,
-or at the latest (when the store was not closed normally) when opening the store.
+By default, changes are automatically written when more than a number of pages are modified,
+and once every second in a background thread, even if only little data was changed.
+Changes can also be written explicitly by calling <code>commit()</code>.
 </p><p>
 When storing, all changed pages are serialized,
 optionally compressed using the LZF algorithm,
@@ -383,8 +373,13 @@ meaning outside of the regular garbage collected heap. This allows to use very l
 stores without having to increase the JVM heap (which would increase Java garbage collection
 pauses a lot). Memory is allocated using <code>ByteBuffer.allocateDirect</code>.
 One chunk is allocated at a time (each chunk is usually a few MB large), so that
-allocation cost is low.
+allocation cost is low. To use the off-heap storage, call:
 </p>
+<pre>
+OffHeapStore offHeap = new OffHeapStore();
+MVStore s = new MVStore.Builder().
+        fileStore(offHeap).open();
+</pre>
 
 <h3 id="fileSystem">File System Abstraction, File Locking and Online Backup</h3>
 <p>
@@ -461,8 +456,8 @@ The following exceptions can occur:
     so that the application can distinguish between different error cases.
 </li><li><code>IllegalArgumentException</code> if a method was called with an illegal argument.
 </li><li><code>UnsupportedOperationException</code> if a method was called that is not supported,
-    for example trying to modify a read-only map or view.
-</li><li><code>ConcurrentModificationException</code> if the object is modified concurrently.
+    for example trying to modify a read-only map.
+</li><li><code>ConcurrentModificationException</code> if a map is modified concurrently.
 </li></ul>
 
 <h3 id="storageEngine">Storage Engine for H2</h3>
@@ -471,12 +466,11 @@ The plan is to use the MVStore as the default storage engine for the H2 database
 in the future (supporting SQL, JDBC, transactions, MVCC, and so on).
 This is work in progress. To try it out, append
 <code>;MV_STORE=TRUE</code>
-to the database URL. In general, functionality and performance should be
+to the database URL. In general, performance should be
 similar than the current default storage engine (the page store).
-There are a few features that have not been implemented yet or are not complete,
-for example there is still a file named <code>.h2.db</code>,
-and the <code>.lock.db</code> file is still used to lock a database
-(long term, the plan is to no longer use those files).
+Even though it can be used with the default table level locking,
+it is recommended to use it together with the MVCC mode
+(to do that, append <code>;MVCC=TRUE</code> to the database URL).
 </p>
 
 <h2 id="differences">Similar Projects and Differences to Other Storage Engines</h2>
@@ -504,7 +498,7 @@ The MVStore does not have a record size limit.
 <p>
 The code is still experimental at this stage.
 The API as well as the behavior may partially change.
-Features may be added and removed (even thought the main features will stay).
+Features may be added and removed (even though the main features will stay).
 </p>
 
 <h2 id="requirements">Requirements</h2>

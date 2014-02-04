@@ -35,11 +35,6 @@ public class DbSchema {
     public static final int MAX_PROCEDURES_LIST_COLUMNS = 500;
 
     /**
-     * The database content container.
-     */
-    private final DbContents contents;
-
-    /**
      * The schema name.
      */
     public final String name;
@@ -60,6 +55,11 @@ public class DbSchema {
     public final String quotedName;
 
     /**
+     * The database content container.
+     */
+    private final DbContents contents;
+
+    /**
      * The table list.
      */
     private DbTableOrView[] tables;
@@ -74,7 +74,10 @@ public class DbSchema {
         this.name = name;
         this.quotedName =  contents.quoteIdentifier(name);
         this.isDefault = isDefault;
-        if (name.equals("INFORMATION_SCHEMA")) {
+        if (name == null) {
+            // firebird
+            isSystem = true;
+        } else if ("INFORMATION_SCHEMA".equals(name)) {
             isSystem = true;
         } else if (!contents.isH2() && StringUtils.toUpperEnglish(name).startsWith("INFO")) {
             isSystem = true;
@@ -129,7 +132,15 @@ public class DbSchema {
         list.toArray(tables);
         if (tables.length < MAX_TABLES_LIST_COLUMNS) {
             for (DbTableOrView tab : tables) {
-                tab.readColumns(meta);
+                try {
+                    tab.readColumns(meta);
+                } catch (SQLException e) {
+                    // MySQL:
+                    // View '...' references invalid table(s) or column(s)
+                    // or function(s) or definer/invoker of view
+                    // lack rights to use them HY000/1356
+                    // ignore
+                }
             }
         }
     }

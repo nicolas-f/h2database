@@ -9,7 +9,6 @@ import java.util.Random;
 
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
-import org.h2.store.fs.FilePathCrypt;
 import org.h2.store.fs.FileUtils;
 import org.h2.test.TestBase;
 import org.h2.test.utils.FilePathUnstable;
@@ -29,36 +28,43 @@ public class TestKillProcessWhileWriting extends TestBase {
      * @param a ignored
      */
     public static void main(String... a) throws Exception {
-        TestBase.createCaller().init().test();
+        TestBase test = TestBase.createCaller().init();
+        test.config.big = true;
+        test.test();
     }
 
     @Override
     public void test() throws Exception {
         fs = FilePathUnstable.register();
+        fs.setPartialWrites(false);
         test("unstable:memFS:killProcess.h3");
 
-        int todo;
-        // need to test with a file system splits writes into blocks of 4 KB
-        FilePathCrypt.register();
-        test("unstable:crypt:0007:memFS:killProcess.h3");
+        if (config.big) {
+            try {
+                fs.setPartialWrites(true);
+                test("unstable:memFS:killProcess.h3");
+            } finally {
+                fs.setPartialWrites(false);
+            }
+        }
     }
 
     private void test(String fileName) throws Exception {
         for (seed = 0; seed < 10; seed++) {
             this.fileName = fileName;
             FileUtils.delete(fileName);
-            test(Integer.MAX_VALUE);
+            test(Integer.MAX_VALUE, seed);
             int max = Integer.MAX_VALUE - fs.getDiskFullCount() + 10;
             assertTrue("" + (max - 10), max > 0);
             for (int i = 0; i < max; i++) {
-                test(i);
+                test(i, seed);
             }
         }
     }
 
-    private void test(int x) throws Exception {
+    private void test(int x, int seed) throws Exception {
         FileUtils.delete(fileName);
-        fs.setDiskFullCount(x);
+        fs.setDiskFullCount(x, seed);
         try {
             write();
             verify();
@@ -66,7 +72,7 @@ public class TestKillProcessWhileWriting extends TestBase {
             if (x == Integer.MAX_VALUE) {
                 throw e;
             }
-            fs.setDiskFullCount(0);
+            fs.setDiskFullCount(0, seed);
             verify();
         }
     }
@@ -78,9 +84,8 @@ public class TestKillProcessWhileWriting extends TestBase {
         s = new MVStore.Builder().
                 fileName(fileName).
                 pageSplitSize(50).
-                writeDelay(0).
+                autoCommitDisabled().
                 open();
-        s.setWriteDelay(0);
         m = s.openMap("data");
         Random r = new Random(seed);
         int op = 0;
@@ -101,7 +106,7 @@ public class TestKillProcessWhileWriting extends TestBase {
                     m.remove(k);
                     break;
                 case 6:
-                    s.store();
+                    s.commit();
                     break;
                 case 7:
                     s.compact(80);
@@ -114,12 +119,12 @@ public class TestKillProcessWhileWriting extends TestBase {
                     s = new MVStore.Builder().
                             fileName(fileName).
                             pageSplitSize(50).
-                            writeDelay(0).open();
+                            autoCommitDisabled().
+                            open();
                     m = s.openMap("data");
                     break;
                 }
             }
-            s.store();
             s.close();
             return 0;
         } catch (Exception e) {

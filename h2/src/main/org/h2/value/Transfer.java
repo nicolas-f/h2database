@@ -495,7 +495,7 @@ public class Transfer {
                 while (rs.next()) {
                     writeBoolean(true);
                     for (int i = 0; i < columnCount; i++) {
-                        int t = DataType.convertSQLTypeToValueType(meta.getColumnType(i + 1));
+                        int t = DataType.getValueTypeFromResultSet(meta, i + 1);
                         Value val = DataType.readValue(session, rs, i + 1, t);
                         writeValue(val);
                     }
@@ -596,7 +596,7 @@ public class Transfer {
                 }
                 int len = (int) length;
                 byte[] small = new byte[len];
-                IOUtils.readFully(in, small, 0, len);
+                IOUtils.readFully(in, small, len);
                 int magic = readInt();
                 if (magic != LOB_MAGIC) {
                     throw DbException.get(ErrorCode.CONNECTION_BROKEN_1, "magic=" + magic);

@@ -8,14 +8,18 @@ package org.h2.test.jdbc;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
 import java.math.BigDecimal;
+import java.net.URL;
+import java.sql.Array;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.RowId;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Time;
@@ -26,6 +30,7 @@ import java.util.GregorianCalendar;
 import java.util.SimpleTimeZone;
 import java.util.TimeZone;
 import java.util.UUID;
+
 import org.h2.api.Trigger;
 import org.h2.constant.ErrorCode;
 import org.h2.test.TestBase;
@@ -52,6 +57,7 @@ public class TestPreparedStatement extends TestBase {
     public void test() throws Exception {
         deleteDb("preparedStatement");
         Connection conn = getConnection("preparedStatement");
+        testUnsupportedOperations(conn);
         testChangeType(conn);
         testDateTimeTimestampWithCalendar(conn);
         testCallTablePrepared(conn);
@@ -89,6 +95,54 @@ public class TestPreparedStatement extends TestBase {
         conn.close();
         testPreparedStatementWithLiteralsNone();
         deleteDb("preparedStatement");
+    }
+
+    @SuppressWarnings("deprecation")
+    private void testUnsupportedOperations(Connection conn) throws Exception {
+        PreparedStatement prep = conn.prepareStatement("select ? from dual");
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            addBatch("select 1");
+
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            executeUpdate("create table test(id int)");
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            executeUpdate("create table test(id int)", new int[0]);
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            executeUpdate("create table test(id int)", new String[0]);
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            executeUpdate("create table test(id int)", Statement.RETURN_GENERATED_KEYS);
+
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            execute("create table test(id int)");
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            execute("create table test(id int)", new int[0]);
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            execute("create table test(id int)", new String[0]);
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            execute("create table test(id int)", Statement.RETURN_GENERATED_KEYS);
+
+        assertThrows(ErrorCode.METHOD_NOT_ALLOWED_FOR_PREPARED_STATEMENT, prep).
+            executeQuery("select * from dual");
+
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, prep).
+            setURL(1, new URL("http://www.acme.com"));
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, prep).
+            setRowId(1, (RowId) null);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, prep).
+            setUnicodeStream(1, (InputStream) null, 0);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, prep).
+            setArray(1, (Array) null);
+
+        ParameterMetaData meta = prep.getParameterMetaData();
+        assertTrue(meta.toString(), meta.toString().endsWith("parameterCount=1"));
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, meta).isWrapperFor(Object.class);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, meta).unwrap(Object.class);
+
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, conn).isWrapperFor(Object.class);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, conn).unwrap(Object.class);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, conn).createSQLXML();
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, conn).createArrayOf("Integer", new Object[0]);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, conn).createStruct("Integer", new Object[0]);
     }
 
     private static void testChangeType(Connection conn) throws SQLException {
@@ -790,6 +844,7 @@ public class TestPreparedStatement extends TestBase {
         prep.setInt(2, 3);
         prep.executeUpdate();
         prep.setInt(1, 4);
+        prep.setNull(2, Types.INTEGER, "INTEGER");
         prep.setNull(2, Types.INTEGER);
         prep.executeUpdate();
         prep.setInt(1, 5);
@@ -979,24 +1034,41 @@ public class TestPreparedStatement extends TestBase {
         rs.next();
         assertEquals(1, rs.getInt(1));
         assertFalse(rs.next());
-        prep = conn.prepareStatement("INSERT INTO TEST VALUES(NEXT VALUE FOR SEQ)", Statement.RETURN_GENERATED_KEYS);
+
+        prep = conn.prepareStatement("INSERT INTO TEST VALUES(NEXT VALUE FOR SEQ)",
+                Statement.RETURN_GENERATED_KEYS);
         prep.execute();
         rs = prep.getGeneratedKeys();
         rs.next();
         assertEquals(2, rs.getInt(1));
         assertFalse(rs.next());
-        prep = conn.prepareStatement("INSERT INTO TEST VALUES(NEXT VALUE FOR SEQ)", new int[] { 1 });
+
+        prep = conn.prepareStatement("INSERT INTO TEST VALUES(NEXT VALUE FOR SEQ)",
+                new int[] { 1 });
         prep.execute();
         rs = prep.getGeneratedKeys();
         rs.next();
         assertEquals(3, rs.getInt(1));
         assertFalse(rs.next());
-        prep = conn.prepareStatement("INSERT INTO TEST VALUES(NEXT VALUE FOR SEQ)", new String[] { "ID" });
+
+        prep = conn.prepareStatement("INSERT INTO TEST VALUES(NEXT VALUE FOR SEQ)",
+                new String[] { "ID" });
         prep.execute();
         rs = prep.getGeneratedKeys();
         rs.next();
         assertEquals(4, rs.getInt(1));
         assertFalse(rs.next());
+
+        prep = conn.prepareStatement("INSERT INTO TEST VALUES(NEXT VALUE FOR SEQ)",
+                ResultSet.TYPE_FORWARD_ONLY,
+                ResultSet.CONCUR_READ_ONLY,
+                ResultSet.HOLD_CURSORS_OVER_COMMIT);
+        prep.execute();
+        rs = prep.getGeneratedKeys();
+        rs.next();
+        assertEquals(5, rs.getInt(1));
+        assertFalse(rs.next());
+
         stat.execute("DROP TABLE TEST");
     }
 

@@ -4,6 +4,50 @@
 -- Initial Developer: H2 Group
 --
 --- special grammar and test cases ---------------------------------------------------------------------------------------------
+create table test(id int, name varchar) as select 1, 'a';
+> ok
+
+(select id from test order by id) union (select id from test order by name);
+> ID
+> --
+> 1
+> rows (ordered): 1
+
+drop table test;
+> ok
+
+create sequence seq;
+> ok
+
+select case seq.nextval when 2 then 'two' when 3 then 'three' when 1 then 'one' else 'other' end result from dual;
+> RESULT
+> ------
+> one
+> rows: 1
+
+drop sequence seq;
+> ok
+
+select decode(1, 1, '1', 1, '11') r from dual;
+> R
+> -
+> 1
+> rows: 1
+
+create table test(x int);
+> ok
+
+create hash index on test(x);
+> ok
+
+select 1 from test group by x;
+> 1
+> -
+> rows: 0
+
+drop table test;
+> ok
+
 call regexp_replace('x', 'x', '\');
 > exception
 
@@ -1302,8 +1346,7 @@ drop table p;
 > X
 > -
 > 1
-> 1
-> rows (ordered): 2
+> rows (ordered): 1
 
 create table test(a int, b int default 1);
 > ok
@@ -6612,8 +6655,8 @@ SELECT * FROM V_UNION WHERE ID=1;
 
 EXPLAIN SELECT * FROM V_UNION WHERE ID=1;
 > PLAN
-> ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-> SELECT V_UNION.ID, V_UNION.NAME, V_UNION.CLASS FROM PUBLIC.V_UNION /* (SELECT CHILDREN.ID, CHILDREN.NAME, CHILDREN.CLASS FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID IS ?1 ++/ WHERE CHILDREN.ID IS ?1) UNION ALL (SELECT CHILDREN.ID, CHILDREN.NAME, CHILDREN.CLASS FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID IS ?1 ++/ WHERE CHILDREN.ID IS ?1): ID = 1 */ WHERE ID = 1
+> ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+> SELECT V_UNION.ID, V_UNION.NAME, V_UNION.CLASS FROM PUBLIC.V_UNION /* (SELECT CHILDREN.ID, CHILDREN.NAME, CHILDREN.CLASS FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID IS ?1 ++/ /++ scanCount: 2 ++/ WHERE CHILDREN.ID IS ?1) UNION ALL (SELECT CHILDREN.ID, CHILDREN.NAME, CHILDREN.CLASS FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID IS ?1 ++/ /++ scanCount: 2 ++/ WHERE CHILDREN.ID IS ?1): ID = 1 */ WHERE ID = 1
 > rows: 1
 
 CREATE VIEW V_EXCEPT AS SELECT * FROM CHILDREN EXCEPT SELECT * FROM CHILDREN WHERE ID=2;
@@ -6627,8 +6670,8 @@ SELECT * FROM V_EXCEPT WHERE ID=1;
 
 EXPLAIN SELECT * FROM V_EXCEPT WHERE ID=1;
 > PLAN
-> ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-> SELECT V_EXCEPT.ID, V_EXCEPT.NAME, V_EXCEPT.CLASS FROM PUBLIC.V_EXCEPT /* (SELECT CHILDREN.ID, CHILDREN.NAME, CHILDREN.CLASS FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID IS ?1 ++/ WHERE CHILDREN.ID IS ?1) EXCEPT (SELECT CHILDREN.ID, CHILDREN.NAME, CHILDREN.CLASS FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID = 2 ++/ WHERE ID = 2): ID = 1 */ WHERE ID = 1
+> ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+> SELECT V_EXCEPT.ID, V_EXCEPT.NAME, V_EXCEPT.CLASS FROM PUBLIC.V_EXCEPT /* (SELECT DISTINCT CHILDREN.ID, CHILDREN.NAME, CHILDREN.CLASS FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID IS ?1 ++/ /++ scanCount: 2 ++/ WHERE CHILDREN.ID IS ?1) EXCEPT (SELECT DISTINCT CHILDREN.ID, CHILDREN.NAME, CHILDREN.CLASS FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID = 2 ++/ /++ scanCount: 2 ++/ WHERE ID = 2): ID = 1 */ WHERE ID = 1
 > rows: 1
 
 CREATE VIEW V_INTERSECT AS SELECT ID, NAME FROM CHILDREN INTERSECT SELECT * FROM CLASSES;
@@ -6641,8 +6684,8 @@ SELECT * FROM V_INTERSECT WHERE ID=1;
 
 EXPLAIN SELECT * FROM V_INTERSECT WHERE ID=1;
 > PLAN
-> ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-> SELECT V_INTERSECT.ID, V_INTERSECT.NAME FROM PUBLIC.V_INTERSECT /* (SELECT ID, NAME FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID IS ?1 ++/ WHERE ID IS ?1) INTERSECT (SELECT CLASSES.ID, CLASSES.NAME FROM PUBLIC.CLASSES /++ PUBLIC.PRIMARY_KEY_5: ID IS ?1 ++/ WHERE CLASSES.ID IS ?1): ID = 1 */ WHERE ID = 1
+> ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+> SELECT V_INTERSECT.ID, V_INTERSECT.NAME FROM PUBLIC.V_INTERSECT /* (SELECT DISTINCT ID, NAME FROM PUBLIC.CHILDREN /++ PUBLIC.PRIMARY_KEY_9: ID IS ?1 ++/ /++ scanCount: 2 ++/ WHERE ID IS ?1) INTERSECT (SELECT DISTINCT CLASSES.ID, CLASSES.NAME FROM PUBLIC.CLASSES /++ PUBLIC.PRIMARY_KEY_5: ID IS ?1 ++/ /++ scanCount: 2 ++/ WHERE CLASSES.ID IS ?1): ID = 1 */ WHERE ID = 1
 > rows: 1
 
 DROP VIEW V_UNION;
@@ -8305,7 +8348,7 @@ DROP SEQUENCE IF EXISTS TEST_SEQ;
 DROP SEQUENCE IF EXISTS TEST_SEQ;
 > ok
 
-CREATE SEQUENCE TEST_LONG START WITH 90123456789012345 INCREMENT BY -1;
+CREATE SEQUENCE TEST_LONG START WITH 90123456789012345 MAXVALUE 90123456789012345 INCREMENT BY -1;
 > ok
 
 SET AUTOCOMMIT FALSE;

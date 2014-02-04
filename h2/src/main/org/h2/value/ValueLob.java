@@ -104,7 +104,7 @@ public class ValueLob extends Value {
      * @param small the byte array
      * @return the lob value
      */
-    public static ValueLob createSmallLob(int type, byte[] small) {
+    private static ValueLob createSmallLob(int type, byte[] small) {
         return new ValueLob(type, small);
     }
 
@@ -158,7 +158,7 @@ public class ValueLob extends Value {
      * @param handler the data handler
      * @return the lob value
      */
-    public static ValueLob createClob(Reader in, long length, DataHandler handler) {
+    private static ValueLob createClob(Reader in, long length, DataHandler handler) {
         try {
             if (handler == null) {
                 String s = IOUtils.readStringAndClose(in, (int) length);
@@ -178,7 +178,6 @@ public class ValueLob extends Value {
             } else {
                 buff = new char[len];
                 len = IOUtils.readFully(in, buff, len);
-                len = len < 0 ? 0 : len;
             }
             if (len <= handler.getMaxLengthInplaceLob()) {
                 byte[] small = new String(buff, 0, len).getBytes(Constants.UTF8);
@@ -227,7 +226,7 @@ public class ValueLob extends Value {
                 }
                 len = getBufferSize(h, compress, remaining);
                 len = IOUtils.readFully(in, buff, len);
-                if (len <= 0) {
+                if (len == 0) {
                     break;
                 }
             }
@@ -314,14 +313,6 @@ public class ValueLob extends Value {
         return newId;
     }
 
-    /**
-     * Reset the directory counter as if the process was stopped. This method is
-     * for debugging only (to simulate stopping a process).
-     */
-    public static void resetDirCounter() {
-        dirCounter = 0;
-    }
-
     private static void invalidateFileList(DataHandler h, String dir) {
         SmallLRUCache<String, String[]> cache = h.getLobFileListCache();
         if (cache != null) {
@@ -356,7 +347,7 @@ public class ValueLob extends Value {
      * @param handler the data handler
      * @return the lob value
      */
-    public static ValueLob createBlob(InputStream in, long length, DataHandler handler) {
+    private static ValueLob createBlob(InputStream in, long length, DataHandler handler) {
         try {
             if (handler == null) {
                 byte[] data = IOUtils.readBytesAndClose(in, (int) length);
@@ -374,7 +365,7 @@ public class ValueLob extends Value {
                 len = buff.length;
             } else {
                 buff = DataUtils.newBytes(len);
-                len = IOUtils.readFully(in, buff, 0, len);
+                len = IOUtils.readFully(in, buff, len);
             }
             if (len <= handler.getMaxLengthInplaceLob()) {
                 byte[] small = DataUtils.newBytes(len);
@@ -424,7 +415,7 @@ public class ValueLob extends Value {
                     break;
                 }
                 len = getBufferSize(h, compress, remaining);
-                len = IOUtils.readFully(in, buff, 0, len);
+                len = IOUtils.readFully(in, buff, len);
                 if (len <= 0) {
                     break;
                 }
@@ -783,29 +774,6 @@ public class ValueLob extends Value {
             return small.length + 104;
         }
         return 140;
-    }
-
-    /**
-     * Remove all lobs for a given table id.
-     *
-     * @param handler the data handler
-     * @param tableId the table id
-     */
-    public static void removeAllForTable(DataHandler handler, int tableId) {
-        String dir = ValueLob.getFileNamePrefix(handler.getDatabasePath(), 0);
-        removeAllForTable(handler, dir, tableId);
-    }
-
-    private static void removeAllForTable(DataHandler handler, String dir, int tableId) {
-        for (String name : FileUtils.newDirectoryStream(dir)) {
-            if (FileUtils.isDirectory(name)) {
-                removeAllForTable(handler, name, tableId);
-            } else {
-                if (name.endsWith(".t" + tableId + Constants.SUFFIX_LOB_FILE)) {
-                    ValueLob.deleteFile(handler, name);
-                }
-            }
-        }
     }
 
     /**

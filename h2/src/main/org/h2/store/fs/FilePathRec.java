@@ -155,6 +155,11 @@ class FileRec extends FileBase {
     }
 
     @Override
+    public int read(ByteBuffer dst, long position) throws IOException {
+        return channel.read(dst, position);
+    }
+
+    @Override
     public FileChannel position(long pos) throws IOException {
         channel.position(pos);
         return this;
@@ -187,8 +192,27 @@ class FileRec extends FileBase {
     }
 
     @Override
+    public int write(ByteBuffer src, long position) throws IOException {
+        byte[] buff = src.array();
+        int len = src.remaining();
+        if (src.position() != 0 || len != buff.length) {
+            byte[] b = new byte[len];
+            System.arraycopy(buff, src.arrayOffset() + src.position(), b, 0, len);
+            buff = b;
+        }
+        int result = channel.write(src, position);
+        rec.log(Recorder.WRITE, name, buff, position);
+        return result;
+    }
+
+    @Override
     public synchronized FileLock tryLock(long position, long size, boolean shared) throws IOException {
         return channel.tryLock(position, size, shared);
+    }
+
+    @Override
+    public String toString() {
+        return name;
     }
 
 }

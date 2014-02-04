@@ -33,6 +33,7 @@ public class TestClearReferences extends TestBase {
         "org.h2.store.fs.FilePath.providers",
         "org.h2.store.fs.FilePath.tempRandom",
         "org.h2.store.fs.FilePathRec.recorder",
+        "org.h2.store.fs.FileMemData.data",
         "org.h2.tools.CompressTool.cachedBuffer",
         "org.h2.util.CloseWatcher.queue",
         "org.h2.util.CloseWatcher.refs",
@@ -102,6 +103,9 @@ public class TestClearReferences extends TestBase {
             }
         } else {
             if (!name.endsWith(".class")) {
+                return;
+            }
+            if (name.indexOf('$') >= 0) {
                 return;
             }
             String className = file.getAbsolutePath().replace('\\', '/');

@@ -666,7 +666,7 @@ public class Data {
                 while (rs.next()) {
                     writeByte((byte) 1);
                     for (int i = 0; i < columnCount; i++) {
-                        int t = DataType.convertSQLTypeToValueType(meta.getColumnType(i + 1));
+                        int t = DataType.getValueTypeFromResultSet(meta, i + 1);
                         Value val = DataType.readValue(null, rs, i + 1, t);
                         writeValue(val);
                     }
@@ -802,7 +802,7 @@ public class Data {
             if (smallLen >= 0) {
                 byte[] small = DataUtils.newBytes(smallLen);
                 read(small, 0, smallLen);
-                return LobStorageFrontend.createSmallLob(type, small);
+                return ValueLobDb.createSmallLob(type, small);
             } else if (smallLen == -3) {
                 int tableId = readVarInt();
                 long lobId = readVarLong();
@@ -1078,7 +1078,7 @@ public class Data {
                 while (rs.next()) {
                     len++;
                     for (int i = 0; i < columnCount; i++) {
-                        int t = DataType.convertSQLTypeToValueType(meta.getColumnType(i + 1));
+                        int t = DataType.getValueTypeFromResultSet(meta, i + 1);
                         Value val = DataType.readValue(null, rs, i + 1, t);
                         len += getValueLen(val, handler);
                     }

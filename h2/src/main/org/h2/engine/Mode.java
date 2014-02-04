@@ -99,6 +99,11 @@ public class Mode {
     public boolean uniqueIndexSingleNullExceptAllColumnsAreNull;
 
     /**
+     * Empty strings are treated like NULL values. Useful for Oracle emulation.
+     */
+    public boolean treatEmptyStringsAsNull;
+
+    /**
      * Support the pseudo-table SYSIBM.SYSDUMMY1.
      */
     public boolean sysDummy1;
@@ -123,6 +128,15 @@ public class Mode {
      */
     public boolean swapConvertFunctionParameters;
 
+    /**
+     * can set the isolation level using WITH {RR|RS|CS|UR}
+     */
+    public boolean isolationLevelInSelectOrInsertStatement;
+
+    /**
+     * MySQL style INSERT ... ON DUPLICATE KEY UPDATE ...
+     */
+    public boolean onDuplicateKeyUpdate;
 
     private final String name;
 
@@ -135,6 +149,7 @@ public class Mode {
         mode.aliasColumnName = true;
         mode.supportOffsetFetch = true;
         mode.sysDummy1 = true;
+        mode.isolationLevelInSelectOrInsertStatement = true;
         add(mode);
 
         mode = new Mode("Derby");
@@ -142,6 +157,7 @@ public class Mode {
         mode.uniqueIndexSingleNull = true;
         mode.supportOffsetFetch = true;
         mode.sysDummy1 = true;
+        mode.isolationLevelInSelectOrInsertStatement = true;
         add(mode);
 
         mode = new Mode("HSQLDB");
@@ -164,11 +180,14 @@ public class Mode {
         mode.convertInsertNullToZero = true;
         mode.indexDefinitionInCreateTable = true;
         mode.lowerCaseIdentifiers = true;
+        mode.onDuplicateKeyUpdate = true;
         add(mode);
 
         mode = new Mode("Oracle");
         mode.aliasColumnName = true;
+        mode.convertOnlyToSmallerScale = true;
         mode.uniqueIndexSingleNullExceptAllColumnsAreNull = true;
+        mode.treatEmptyStringsAsNull = true;
         add(mode);
 
         mode = new Mode("PostgreSQL");

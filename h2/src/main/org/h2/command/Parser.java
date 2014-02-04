@@ -70,6 +70,7 @@ import org.h2.command.dml.Insert;
 import org.h2.command.dml.Merge;
 import org.h2.command.dml.NoOperation;
 import org.h2.command.dml.Query;
+import org.h2.command.dml.Replace;
 import org.h2.command.dml.RunScriptCommand;
 import org.h2.command.dml.ScriptCommand;
 import org.h2.command.dml.Select;
@@ -172,16 +173,25 @@ public class Parser {
 
     private final Database database;
     private final Session session;
+    /**
+     * @see org.h2.constant.DbSettings#databaseToUpper
+     */
+    private final boolean identifiersToUpper;
 
+    /** indicates character-type for each char in sqlCommand */
     private int[] characterTypes;
     private int currentTokenType;
     private String currentToken;
     private boolean currentTokenQuoted;
     private Value currentValue;
-    private String sqlCommand;
     private String originalSQL;
+    /** copy of originalSQL, with comments blanked out */
+    private String sqlCommand;
+    /** cached array if chars from sqlCommand */
     private char[] sqlCommandChars;
+    /** index into sqlCommand of previous token */
     private int lastParseIndex;
+    /** index into sqlCommand of current token */
     private int parseIndex;
     private CreateView createView;
     private Prepared currentPrepared;
@@ -192,10 +202,9 @@ public class Parser {
     private boolean rightsChecked;
     private boolean recompileAlways;
     private ArrayList<Parameter> indexedParameterList;
-    private final boolean identifiersToUpper;
 
     public Parser(Session session) {
-        database = session.getDatabase();
+        this.database = session.getDatabase();
         this.identifiersToUpper = database.getSettings().databaseToUpper;
         this.session = session;
     }
@@ -407,6 +416,8 @@ public class Parser {
                     c = parseRunScript();
                 } else if (readIf("RELEASE")) {
                     c = parseReleaseSavepoint();
+                } else if (readIf("REPLACE")) {
+                    c = parseReplace();
                 }
                 break;
             case 's':
@@ -1001,7 +1012,7 @@ public class Parser {
         }
         if (readIf("DEFAULT")) {
             read("VALUES");
-            Expression[] expr = { };
+            Expression[] expr = {};
             command.addRow(expr);
         } else if (readIf("VALUES")) {
             read("(");
@@ -1038,6 +1049,66 @@ public class Parser {
             } while (readIf(","));
             command.setColumns(columnList.toArray(new Column[columnList.size()]));
             command.addRow(values.toArray(new Expression[values.size()]));
+        } else {
+            command.setQuery(parseSelect());
+        }
+        if (database.getMode().onDuplicateKeyUpdate) {
+            if (readIf("ON")) {
+                read("DUPLICATE");
+                read("KEY");
+                read("UPDATE");
+                do {
+                    Column column = parseColumn(table);
+                    read("=");
+                    Expression expression;
+                    if (readIf("DEFAULT")) {
+                        expression = ValueExpression.getDefault();
+                    } else {
+                        expression = readExpression();
+                    }
+                    command.addAssignmentForDuplicate(column, expression);
+                } while (readIf(","));
+            }
+        }
+        if (database.getMode().isolationLevelInSelectOrInsertStatement) {
+            parseIsolationClause();
+        }
+        return command;
+    }
+
+    /**
+     * MySQL compatibility. REPLACE is similar to MERGE.
+     */
+    private Replace parseReplace() {
+        Replace command = new Replace(session);
+        currentPrepared = command;
+        read("INTO");
+        Table table = readTableOrView();
+        command.setTable(table);
+        if (readIf("(")) {
+            if (isSelect()) {
+                command.setQuery(parseSelect());
+                read(")");
+                return command;
+            }
+            Column[] columns = parseColumnList(table);
+            command.setColumns(columns);
+        }
+        if (readIf("VALUES")) {
+            do {
+                ArrayList<Expression> values = New.arrayList();
+                read("(");
+                if (!readIf(")")) {
+                    do {
+                        if (readIf("DEFAULT")) {
+                            values.add(null);
+                        } else {
+                            values.add(readExpression());
+                        }
+                    } while (readIfMore());
+                }
+                command.addRow(values.toArray(new Expression[values.size()]));
+            } while (readIf(","));
         } else {
             command.setQuery(parseSelect());
         }
@@ -1695,16 +1766,34 @@ public class Parser {
                     } while (readIf(","));
                 } else if (readIf("NOWAIT")) {
                     // TODO parser: select for update nowait: should not wait
-                } else if (readIf("WITH")) {
-                    // Hibernate / Derby support
-                    read("RR");
                 }
                 command.setForUpdate(true);
             } else if (readIf("READ") || readIf("FETCH")) {
                 read("ONLY");
-                if (readIf("WITH")) {
-                    read("RS");
+            }
+        }
+        if (database.getMode().isolationLevelInSelectOrInsertStatement) {
+            parseIsolationClause();
+        }
+    }
+
+    /**
+     * DB2 isolation clause
+     */
+    private void parseIsolationClause() {
+        if (readIf("WITH")) {
+            if (readIf("RR") || readIf("RS")) {
+                // concurrent-access-resolution clause
+                if (readIf("USE")) {
+                    read("AND");
+                    read("KEEP");
+                    if (readIf("SHARE") || readIf("UPDATE") || readIf("EXCLUSIVE")) {
+                        // ignore
+                    }
+                    read("LOCKS");
                 }
+            } else if (readIf("CS") || readIf("UR")) {
+                // ignore
             }
         }
     }
@@ -2531,12 +2620,7 @@ public class Parser {
                     // CASE must be processed before (,
                     // otherwise CASE(3) would be a function call, which it is
                     // not
-                    if (isToken("WHEN")) {
-                        r = readWhen(null);
-                    } else {
-                        Expression left = readExpression();
-                        r = readWhen(left);
-                    }
+                    r = readCase();
                 } else if (readIf("(")) {
                     r = readFunction(null, name);
                 } else if (equalsToken("CURRENT_USER", name)) {
@@ -2721,29 +2805,55 @@ public class Parser {
         return r;
     }
 
-    private Expression readWhen(Expression left) {
+    private Expression readCase() {
         if (readIf("END")) {
             readIf("CASE");
             return ValueExpression.getNull();
         }
         if (readIf("ELSE")) {
-            Expression elsePart = readExpression();
+            Expression elsePart = readExpression().optimize(session);
             read("END");
             readIf("CASE");
             return elsePart;
         }
-        readIf("WHEN");
-        Expression when = readExpression();
-        if (left != null) {
-            when = new Comparison(session, Comparison.EQUAL, left, when);
+        int i;
+        Function function;
+        if (readIf("WHEN")) {
+            function = Function.getFunction(database, "CASE");
+            function.setParameter(0, null);
+            i = 1;
+            do {
+                function.setParameter(i++, readExpression());
+                read("THEN");
+                function.setParameter(i++, readExpression());
+            } while (readIf("WHEN"));
+        } else {
+            Expression expr = readExpression();
+            if (readIf("END")) {
+                readIf("CASE");
+                return ValueExpression.getNull();
+            }
+            if (readIf("ELSE")) {
+                Expression elsePart = readExpression().optimize(session);
+                read("END");
+                readIf("CASE");
+                return elsePart;
+            }
+            function = Function.getFunction(database, "CASE");
+            function.setParameter(0, expr);
+            i = 1;
+            read("WHEN");
+            do {
+                function.setParameter(i++, readExpression());
+                read("THEN");
+                function.setParameter(i++, readExpression());
+            } while (readIf("WHEN"));
         }
-        read("THEN");
-        Expression then = readExpression();
-        Expression elsePart = readWhen(left);
-        Function function = Function.getFunction(session.getDatabase(), "CASEWHEN");
-        function.setParameter(0, when);
-        function.setParameter(1, then);
-        function.setParameter(2, elsePart);
+        if (readIf("ELSE")) {
+            function.setParameter(i, readExpression());
+        }
+        read("END");
+        readIf("CASE");
         function.doneWithParameters();
         return function;
     }
@@ -2998,11 +3108,7 @@ public class Parser {
             while (true) {
                 c = chars[i];
                 if (c < '0' || c > '9') {
-                    if (c == '.') {
-                        readDecimal(start, i);
-                        break;
-                    }
-                    if (c == 'E') {
+                    if (c == '.' || c == 'E' || c == 'L') {
                         readDecimal(start, i);
                         break;
                     }
@@ -3050,7 +3156,7 @@ public class Parser {
             }
             currentToken = "'";
             checkLiterals(true);
-            currentValue = ValueString.get(StringUtils.fromCacheOrNew(result));
+            currentValue = ValueString.get(StringUtils.fromCacheOrNew(result), database.getMode().treatEmptyStringsAsNull);
             parseIndex = i;
             currentTokenType = VALUE;
             return;
@@ -3064,7 +3170,7 @@ public class Parser {
             result = sqlCommand.substring(begin, i);
             currentToken = "'";
             checkLiterals(true);
-            currentValue = ValueString.get(StringUtils.fromCacheOrNew(result));
+            currentValue = ValueString.get(StringUtils.fromCacheOrNew(result), database.getMode().treatEmptyStringsAsNull);
             parseIndex = i;
             currentTokenType = VALUE;
             return;
@@ -3133,6 +3239,10 @@ public class Parser {
         if (!containsE && sub.indexOf('.') < 0) {
             BigInteger bi = new BigInteger(sub);
             if (bi.compareTo(ValueLong.MAX) <= 0) {
+                // parse constants like "10000000L"
+                if (chars[i] == 'L') {
+                    parseIndex++;
+                }
                 currentValue = ValueLong.get(bi.longValue());
                 currentTokenType = VALUE;
                 return;
@@ -3567,6 +3677,9 @@ public class Parser {
             }
             return getKeywordOrIdentifier(s, "UNION", KEYWORD);
         case 'W':
+            if ("WITH".equals(s)) {
+                return KEYWORD;
+            }
             return getKeywordOrIdentifier(s, "WHERE", KEYWORD);
         default:
             return IDENTIFIER;
@@ -3942,45 +4055,54 @@ public class Parser {
         }
     }
 
+    /**
+     * @return true if we expect to see a TABLE clause
+     */
     private boolean addRoleOrRight(GrantRevoke command) {
         if (readIf("SELECT")) {
             command.addRight(Right.SELECT);
-            return false;
+            return true;
         } else if (readIf("DELETE")) {
             command.addRight(Right.DELETE);
-            return false;
+            return true;
         } else if (readIf("INSERT")) {
             command.addRight(Right.INSERT);
-            return false;
+            return true;
         } else if (readIf("UPDATE")) {
             command.addRight(Right.UPDATE);
-            return false;
+            return true;
         } else if (readIf("ALL")) {
             command.addRight(Right.ALL);
+            return true;
+        } else if (readIf("ALTER")) {
+            read("ANY");
+            read("SCHEMA");
+            command.addRight(Right.ALTER_ANY_SCHEMA);
+            command.addTable(null);
             return false;
         } else if (readIf("CONNECT")) {
             // ignore this right
-            return false;
+            return true;
         } else if (readIf("RESOURCE")) {
             // ignore this right
-            return false;
+            return true;
         } else {
             command.addRoleName(readUniqueIdentifier());
-            return true;
+            return false;
         }
     }
 
     private GrantRevoke parseGrantRevoke(int operationType) {
         GrantRevoke command = new GrantRevoke(session);
         command.setOperationType(operationType);
-        boolean isRoleBased = addRoleOrRight(command);
+        boolean tableClauseExpected = addRoleOrRight(command);
         while (readIf(",")) {
-            boolean next = addRoleOrRight(command);
-            if (next != isRoleBased) {
+            addRoleOrRight(command);
+            if (command.isRightMode() && command.isRoleMode()) {
                 throw DbException.get(ErrorCode.ROLES_AND_RIGHT_CANNOT_BE_MIXED);
             }
         }
-        if (!isRoleBased) {
+        if (tableClauseExpected) {
             if (readIf("ON")) {
                 do {
                     Table table = readTableOrView();
@@ -4124,8 +4246,34 @@ public class Parser {
             } else if (readIf("INCREMENT")) {
                 readIf("BY");
                 command.setIncrement(readExpression());
+            } else if (readIf("MINVALUE")) {
+                command.setMinValue(readExpression());
+            } else if (readIf("NOMINVALUE")) {
+                command.setMinValue(null);
+            } else if (readIf("MAXVALUE")) {
+                command.setMaxValue(readExpression());
+            } else if (readIf("NOMAXVALUE")) {
+                command.setMaxValue(null);
+            } else if (readIf("CYCLE")) {
+                command.setCycle(true);
+            } else if (readIf("NOCYCLE")) {
+                command.setCycle(false);
+            } else if (readIf("NO")) {
+                if (readIf("MINVALUE")) {
+                    command.setMinValue(null);
+                } else if (readIf("MAXVALUE")) {
+                    command.setMaxValue(null);
+                } else if (readIf("CYCLE")) {
+                    command.setCycle(false);
+                } else if (readIf("CACHE")) {
+                    command.setCacheSize(ValueExpression.get(ValueLong.get(1)));
+                } else {
+                    break;
+                }
             } else if (readIf("CACHE")) {
                 command.setCacheSize(readExpression());
+            } else if (readIf("NOCACHE")) {
+                command.setCacheSize(ValueExpression.get(ValueLong.get(1)));
             } else if (readIf("BELONGS_TO_TABLE")) {
                 command.setBelongsToTable(true);
             } else {
@@ -4291,6 +4439,7 @@ public class Parser {
         command.setAliasName(aliasName);
         command.setIfNotExists(ifNotExists);
         command.setDeterministic(readIf("DETERMINISTIC"));
+        command.setBufferResultSetToLocalTemp(!readIf("NOBUFFER"));
         if (readIf("AS")) {
             command.setSource(readString());
         } else {
@@ -4465,13 +4614,44 @@ public class Parser {
         Sequence sequence = getSchema().getSequence(sequenceName);
         AlterSequence command = new AlterSequence(session, sequence.getSchema());
         command.setSequence(sequence);
-        if (readIf("RESTART")) {
-            read("WITH");
-            command.setStartWith(readExpression());
-        }
-        if (readIf("INCREMENT")) {
-            read("BY");
-            command.setIncrement(readExpression());
+        while (true) {
+            if (readIf("RESTART")) {
+                read("WITH");
+                command.setStartWith(readExpression());
+            } else if (readIf("INCREMENT")) {
+                read("BY");
+                command.setIncrement(readExpression());
+            } else if (readIf("MINVALUE")) {
+                command.setMinValue(readExpression());
+            } else if (readIf("NOMINVALUE")) {
+                command.setMinValue(null);
+            } else if (readIf("MAXVALUE")) {
+                command.setMaxValue(readExpression());
+            } else if (readIf("NOMAXVALUE")) {
+                command.setMaxValue(null);
+            } else if (readIf("CYCLE")) {
+                command.setCycle(true);
+            } else if (readIf("NOCYCLE")) {
+                command.setCycle(false);
+            } else if (readIf("NO")) {
+                if (readIf("MINVALUE")) {
+                    command.setMinValue(null);
+                } else if (readIf("MAXVALUE")) {
+                    command.setMaxValue(null);
+                } else if (readIf("CYCLE")) {
+                    command.setCycle(false);
+                } else if (readIf("CACHE")) {
+                    command.setCacheSize(ValueExpression.get(ValueLong.get(1)));
+                } else {
+                    break;
+                }
+            } else if (readIf("CACHE")) {
+                command.setCacheSize(readExpression());
+            } else if (readIf("NOCACHE")) {
+                command.setCacheSize(ValueExpression.get(ValueLong.get(1)));
+            } else {
+                break;
+            }
         }
         return command;
     }
@@ -5526,7 +5706,7 @@ public class Parser {
                 return StringUtils.quoteIdentifier(s);
             }
         }
-        if (Parser.isKeyword(s, true)) {
+        if (isKeyword(s, true)) {
             return StringUtils.quoteIdentifier(s);
         }
         return s;

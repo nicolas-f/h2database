@@ -14,7 +14,8 @@ import java.nio.channels.OverlappingFileLockException;
 
 import org.h2.mvstore.cache.FilePathCache;
 import org.h2.store.fs.FilePath;
-import org.h2.store.fs.FilePathCrypt;
+import org.h2.store.fs.FilePathDisk;
+import org.h2.store.fs.FilePathEncrypt;
 import org.h2.store.fs.FilePathNio;
 
 /**
@@ -111,11 +112,13 @@ public class FileStore {
      *            used
      */
     public void open(String fileName, boolean readOnly, char[] encryptionKey) {
-        if (fileName != null && fileName.indexOf(':') < 0) {
-            // NIO is used, unless a different file system is specified
-            // the following line is to ensure the NIO file system is compiled
-            FilePathNio.class.getName();
-            fileName = "nio:" + fileName;
+        if (fileName != null) {
+            if (FilePath.get(fileName) instanceof FilePathDisk) {
+                // NIO is used, unless a different file system is specified
+                // the following line is to ensure the NIO file system is compiled
+                FilePathNio.class.getName();
+                fileName = "nio:" + fileName;
+            }
         }
         this.fileName = fileName;
         FilePath f = FilePath.get(fileName);
@@ -130,12 +133,11 @@ public class FileStore {
         try {
             file = f.open(readOnly ? "r" : "rw");
             if (encryptionKey != null) {
-                byte[] key = FilePathCrypt.getPasswordBytes(encryptionKey);
+                byte[] key = FilePathEncrypt.getPasswordBytes(encryptionKey);
                 encryptedFile = file;
-                file = new FilePathCrypt.FileCrypt(fileName, key, file);
+                file = new FilePathEncrypt.FileEncrypt(fileName, key, file);
             }
             file = FilePathCache.wrap(file);
-            fileSize = file.size();
             try {
                 if (readOnly) {
                     fileLock = file.tryLock(0, Long.MAX_VALUE, true);
@@ -150,6 +152,7 @@ public class FileStore {
                 throw DataUtils.newIllegalStateException(
                         DataUtils.ERROR_FILE_LOCKED, "The file is locked: {0}", fileName);
             }
+            fileSize = file.size();
         } catch (IOException e) {
             throw DataUtils.newIllegalStateException(
                     DataUtils.ERROR_READING_FAILED,

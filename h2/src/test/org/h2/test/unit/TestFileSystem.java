@@ -16,7 +16,6 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.nio.channels.FileLock;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -30,7 +29,8 @@ import org.h2.message.DbException;
 import org.h2.mvstore.DataUtils;
 import org.h2.mvstore.cache.FilePathCache;
 import org.h2.store.fs.FilePath;
-import org.h2.store.fs.FilePathCrypt;
+import org.h2.store.fs.FilePathEncrypt;
+import org.h2.store.fs.FilePathRec;
 import org.h2.store.fs.FileUtils;
 import org.h2.test.TestBase;
 import org.h2.test.utils.AssertThrows;
@@ -65,6 +65,7 @@ public class TestFileSystem extends TestBase {
         testUnsupportedFeatures(getBaseDir());
         FilePathZip2.register();
         FilePath.register(new FilePathCache());
+        FilePathRec.register();
         testZipFileSystem("zip:");
         testZipFileSystem("cache:zip:");
         testZipFileSystem("zip2:");
@@ -72,7 +73,7 @@ public class TestFileSystem extends TestBase {
         testMemFsDir();
         testClasspath();
         FilePathDebug.register().setTrace(true);
-        FilePathCrypt.register();
+        FilePathEncrypt.register();
         testSimpleExpandTruncateSize();
         testSplitDatabaseInZip();
         testDatabaseInMemFileSys();
@@ -85,13 +86,14 @@ public class TestFileSystem extends TestBase {
         testFileSystem("memLZF:");
         testFileSystem("nioMemFS:");
         testFileSystem("nioMemLZF:");
+        testFileSystem("rec:memFS:");
         testUserHome();
         try {
             testFileSystem("nio:" + getBaseDir() + "/fs");
             testFileSystem("cache:nio:" + getBaseDir() + "/fs");
             testFileSystem("nioMapped:" + getBaseDir() + "/fs");
-            testFileSystem("crypt:0007:" + getBaseDir() + "/fs");
-            testFileSystem("cache:crypt:0007:" + getBaseDir() + "/fs");
+            testFileSystem("encrypt:0007:" + getBaseDir() + "/fs");
+            testFileSystem("cache:encrypt:0007:" + getBaseDir() + "/fs");
             if (!config.splitFileSystem) {
                 testFileSystem("split:" + getBaseDir() + "/fs");
                 testFileSystem("split:nioMapped:" + getBaseDir() + "/fs");
@@ -206,7 +208,8 @@ public class TestFileSystem extends TestBase {
 
     private void testMemFsDir() throws IOException {
         FileUtils.newOutputStream("memFS:data/test/a.txt", false).close();
-        assertEquals(1, FileUtils.newDirectoryStream("memFS:data/test").size());
+        assertEquals(FileUtils.newDirectoryStream("memFS:data/test").toString(),
+                1, FileUtils.newDirectoryStream("memFS:data/test").size());
         FileUtils.deleteRecursive("memFS:", false);
     }
 
@@ -239,6 +242,7 @@ public class TestFileSystem extends TestBase {
             lock.release();
         }
         c.close();
+        FileUtils.deleteRecursive("memFS:", false);
     }
 
     private void testSplitDatabaseInZip() throws SQLException {
@@ -246,7 +250,7 @@ public class TestFileSystem extends TestBase {
         FileUtils.deleteRecursive(dir, false);
         Connection conn;
         Statement stat;
-        conn = DriverManager.getConnection("jdbc:h2:split:18:"+dir+"/test");
+        conn = getConnection("jdbc:h2:split:18:"+dir+"/test");
         stat = conn.createStatement();
         stat.execute(
                 "create table test(id int primary key, name varchar) " +
@@ -255,7 +259,7 @@ public class TestFileSystem extends TestBase {
         conn.close();
         Backup.execute(dir + "/test.zip", dir, "", true);
         DeleteDbFiles.execute("split:" + dir, "test", true);
-        conn = DriverManager.getConnection(
+        conn = getConnection(
                 "jdbc:h2:split:zip:"+dir+"/test.zip!/test");
         conn.createStatement().execute("select * from test where id=1");
         conn.close();
@@ -266,12 +270,12 @@ public class TestFileSystem extends TestBase {
         org.h2.Driver.load();
         deleteDb("fsMem");
         String url = "jdbc:h2:" + getBaseDir() + "/fsMem";
-        Connection conn = DriverManager.getConnection(url, "sa", "sa");
+        Connection conn = getConnection(url, "sa", "sa");
         conn.createStatement().execute("CREATE TABLE TEST AS SELECT * FROM DUAL");
         conn.createStatement().execute("BACKUP TO '" + getBaseDir() + "/fsMem.zip'");
         conn.close();
         org.h2.tools.Restore.main("-file", getBaseDir() + "/fsMem.zip", "-dir", "memFS:");
-        conn = DriverManager.getConnection("jdbc:h2:memFS:fsMem", "sa", "sa");
+        conn = getConnection("jdbc:h2:memFS:fsMem", "sa", "sa");
         ResultSet rs = conn.createStatement().executeQuery("SELECT * FROM TEST");
         rs.close();
         conn.close();
@@ -288,7 +292,7 @@ public class TestFileSystem extends TestBase {
         }
         org.h2.Driver.load();
         String url = "jdbc:h2:" + getBaseDir() + "/fsJar";
-        Connection conn = DriverManager.getConnection(url, "sa", "sa");
+        Connection conn = getConnection(url, "sa", "sa");
         Statement stat = conn.createStatement();
         stat.execute("create table test(id int primary key, name varchar, b blob, c clob)");
         stat.execute("insert into test values(1, 'Hello', SECURE_RAND(2000), space(2000))");
@@ -298,7 +302,7 @@ public class TestFileSystem extends TestBase {
         byte[] b1 = rs.getBytes(3);
         String s1 = rs.getString(4);
         conn.close();
-        conn = DriverManager.getConnection(url, "sa", "sa");
+        conn = getConnection(url, "sa", "sa");
         stat = conn.createStatement();
         stat.execute("backup to '" + getBaseDir() + "/fsJar.zip'");
         conn.close();
@@ -321,7 +325,7 @@ public class TestFileSystem extends TestBase {
             testReadOnly(f);
         }
         String urlJar = "jdbc:h2:zip:" + getBaseDir() + "/fsJar.zip!/fsJar";
-        conn = DriverManager.getConnection(urlJar, "sa", "sa");
+        conn = getConnection(urlJar, "sa", "sa");
         stat = conn.createStatement();
         rs = stat.executeQuery("select * from test");
         rs.next();

@@ -47,11 +47,54 @@ public class TestMVRTree extends TestMVStore {
         FileUtils.deleteRecursive(getBaseDir(), true);
         FileUtils.createDirectories(getBaseDir());
 
+        testRandomInsert();
+        testSpatialKey();
         testExample();
         testMany();
         testSimple();
         testRandom();
         testRandomFind();
+    }
+
+    private void testRandomInsert() {
+        String fileName = getBaseDir() + "/testMany.h3";
+        FileUtils.delete(fileName);
+        MVStore s;
+        s = new MVStore.Builder().fileName(fileName).
+                pageSplitSize(100).open();
+        MVRTreeMap<String> map = s.openMap("data",
+                new MVRTreeMap.Builder<String>());
+        Random r = new Random(1);
+        for (int i = 0; i < 1000; i++) {
+            if (i % 100 == 0) {
+                r.setSeed(1);
+            }
+            float x = r.nextFloat() * 50, y = r.nextFloat() * 50;
+            SpatialKey k = new SpatialKey(i % 100, x, x + 2, y, y + 1);
+            map.put(k, "i:" + i);
+            if (i % 10 == 0) {
+                s.commit();
+            }
+        }
+        s.close();
+    }
+
+    private void testSpatialKey() {
+        SpatialKey a0 = new SpatialKey(0, 1, 2, 3, 4);
+        SpatialKey a1 = new SpatialKey(0, 1, 2, 3, 4);
+        SpatialKey b0 = new SpatialKey(1, 1, 2, 3, 4);
+        SpatialKey c0 = new SpatialKey(1, 1.1f, 2.2f, 3.3f, 4.4f);
+        assertEquals(0, a0.hashCode());
+        assertEquals(1, b0.hashCode());
+        assertTrue(a0.equals(a0));
+        assertTrue(a0.equals(a1));
+        assertFalse(a0.equals(b0));
+        assertTrue(a0.equalsIgnoringId(b0));
+        assertFalse(b0.equals(c0));
+        assertFalse(b0.equalsIgnoringId(c0));
+        assertEquals("0: (1.0/2.0, 3.0/4.0)", a0.toString());
+        assertEquals("1: (1.0/2.0, 3.0/4.0)", b0.toString());
+        assertEquals("1: (1.1/2.2, 3.3/4.4)", c0.toString());
     }
 
     private void testExample() {
@@ -100,7 +143,7 @@ public class TestMVRTree extends TestMVStore {
             SpatialKey k = new SpatialKey(i, x - p, x + p, y - p, y + p);
             r.add(k, "" + i);
             if (i > 0 && (i % len / 10) == 0) {
-                s.store();
+                s.commit();
             }
             if (i > 0 && (i % 10000) == 0) {
                 render(r, getBaseDir() + "/test.png");
@@ -108,7 +151,6 @@ public class TestMVRTree extends TestMVStore {
         }
         // System.out.println(prof.getTop(5));
         // System.out.println("add: " + (System.currentTimeMillis() - t));
-        s.store();
         s.close();
         s = openStore(fileName);
         r = s.openMap("data",

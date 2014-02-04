@@ -72,9 +72,8 @@ public class MVMap<K, V> extends AbstractMap<K, V>
      */
     protected void init(MVStore store, HashMap<String, String> config) {
         this.store = store;
-        this.id = Integer.parseInt(config.get("id"));
-        String x = config.get("createVersion");
-        this.createVersion = x == null ? 0 : Long.parseLong(x);
+        this.id = Integer.parseInt(config.get("id"), 16);
+        this.createVersion = DataUtils.parseHexLong(config.get("createVersion"), 0);
         this.writeVersion = store.getCurrentVersion();
     }
 
@@ -136,8 +135,10 @@ public class MVMap<K, V> extends AbstractMap<K, V>
         long[] children = { p.getPos(), split.getPos() };
         Page[] childrenPages = { p, split };
         long[] counts = { p.getTotalCount(), split.getTotalCount() };
-        p = Page.create(this, writeVersion, 1,
-                keys, null, children, childrenPages, counts, totalCount, 0, 0);
+        p = Page.create(this, writeVersion,
+                1, keys, null,
+                2, children, childrenPages, counts,
+                totalCount, 0, 0);
         return p;
     }
 
@@ -212,7 +213,6 @@ public class MVMap<K, V> extends AbstractMap<K, V>
      */
     @SuppressWarnings("unchecked")
     public K getKey(long index) {
-        checkOpen();
         if (index < 0 || index >= size()) {
             return null;
         }
@@ -283,7 +283,6 @@ public class MVMap<K, V> extends AbstractMap<K, V>
      * @return the index
      */
     public long getKeyIndex(K key) {
-        checkOpen();
         if (size() == 0) {
             return -1;
         }
@@ -317,7 +316,6 @@ public class MVMap<K, V> extends AbstractMap<K, V>
      */
     @SuppressWarnings("unchecked")
     protected K getFirstLast(boolean first) {
-        checkOpen();
         if (size() == 0) {
             return null;
         }
@@ -381,7 +379,6 @@ public class MVMap<K, V> extends AbstractMap<K, V>
      * @return the key, or null if no such key exists
      */
     protected K getMinMax(K key, boolean min, boolean excluding) {
-        checkOpen();
         return getMinMax(root, key, min, excluding);
     }
 
@@ -427,7 +424,6 @@ public class MVMap<K, V> extends AbstractMap<K, V>
     @Override
     @SuppressWarnings("unchecked")
     public V get(Object key) {
-        checkOpen();
         return (V) binarySearch(root, key);
     }
 
@@ -509,33 +505,11 @@ public class MVMap<K, V> extends AbstractMap<K, V>
     }
 
     /**
-     * Remove all entries, and close the map.
-     */
-    public void removeMap() {
-        checkOpen();
-        if (this == store.getMetaMap()) {
-            return;
-        }
-        beforeWrite();
-        try {
-            root.removeAllRecursive();
-            store.removeMap(id);
-            close();
-        } finally {
-            afterWrite();
-        }
-    }
-
-    /**
-     * Close the map, making it read only and release the memory. This method
-     * may only be called when closing the store or when removing the map, as
-     * further writes are not possible.
+     * Close the map. Accessing the data is still possible (to allow concurrent
+     * reads), but it is marked as closed.
      */
     void close() {
         closed = true;
-        readOnly = true;
-        removeAllOldVersions();
-        root = null;
     }
 
     public boolean isClosed() {
@@ -714,7 +688,6 @@ public class MVMap<K, V> extends AbstractMap<K, V>
                 } else {
                     list.add(root);
                 }
-                store.markChanged(this);
             }
             root = newRoot;
         }
@@ -771,35 +744,43 @@ public class MVMap<K, V> extends AbstractMap<K, V>
     }
 
     /**
-     * Iterate over all keys.
+     * Iterate over a number of keys.
      *
      * @param from the first key to return
      * @return the iterator
      */
-    public Cursor<K> keyIterator(K from) {
-        checkOpen();
-        return new Cursor<K>(this, root, from);
+    public Iterator<K> keyIterator(K from) {
+        return new Cursor<K, V>(this, root, from);
+    }
+
+    /**
+     * Get a cursor to iterate over a number of keys and values.
+     *
+     * @param from the first key to return
+     * @return the cursor
+     */
+    public Cursor<K, V> cursor(K from) {
+        return new Cursor<K, V>(this, root, from);
     }
 
     @Override
     public Set<Map.Entry<K, V>> entrySet() {
         HashMap<K, V> map = new HashMap<K, V>();
-        for (K k : keySet()) {
-            map.put(k,  get(k));
+        for (Cursor<K, V> cursor = cursor(null); cursor.hasNext();) {
+            map.put(cursor.next(), cursor.getValue());
         }
         return map.entrySet();
     }
 
     @Override
     public Set<K> keySet() {
-        checkOpen();
         final MVMap<K, V> map = this;
         final Page root = this.root;
         return new AbstractSet<K>() {
 
             @Override
             public Iterator<K> iterator() {
-                return new Cursor<K>(map, root, null);
+                return new Cursor<K, V>(map, root, null);
             }
 
             @Override
@@ -872,19 +853,10 @@ public class MVMap<K, V> extends AbstractMap<K, V>
     }
 
     /**
-     * Forget all old versions.
-     */
-    private void removeAllOldVersions() {
-        // create a new instance
-        // because another thread might iterate over it
-        oldRoots = new ArrayList<Page>();
-    }
-
-    /**
      * Forget those old versions that are no longer needed.
      */
     void removeUnusedOldVersions() {
-        long oldest = store.getRetainOrStoreVersion();
+        long oldest = store.getOldestVersionToKeep();
         if (oldest == -1) {
             return;
         }
@@ -904,24 +876,8 @@ public class MVMap<K, V> extends AbstractMap<K, V>
         oldRoots = list;
     }
 
-    public void setReadOnly(boolean readOnly) {
-        this.readOnly = readOnly;
-    }
-
     public boolean isReadOnly() {
         return readOnly;
-    }
-
-    /**
-     * Check whether the map is open.
-     *
-     * @throws IllegalStateException if the map is closed
-     */
-    protected void checkOpen() {
-        if (closed) {
-            throw DataUtils.newIllegalStateException(
-                    DataUtils.ERROR_CLOSED, "This map is closed");
-        }
     }
 
     /**
@@ -933,8 +889,11 @@ public class MVMap<K, V> extends AbstractMap<K, V>
      *      or if another thread is concurrently writing
      */
     protected void beforeWrite() {
+        if (closed) {
+            throw DataUtils.newIllegalStateException(
+                    DataUtils.ERROR_CLOSED, "This map is closed");
+        }
         if (readOnly) {
-            checkOpen();
             throw DataUtils.newUnsupportedOperationException(
                     "This map is read-only");
         }
@@ -1006,14 +965,12 @@ public class MVMap<K, V> extends AbstractMap<K, V>
      * @return the number of entries
      */
     public long sizeAsLong() {
-        checkOpen();
         return root.getTotalCount();
     }
 
     @Override
     public boolean isEmpty() {
         // could also use (sizeAsLong() == 0)
-        checkOpen();
         return root.isLeaf() && root.getKeyCount() == 0;
     }
 
@@ -1076,12 +1033,12 @@ public class MVMap<K, V> extends AbstractMap<K, V>
      *
      * @return the opened map
      */
-    protected MVMap<K, V> openReadOnly() {
+    MVMap<K, V> openReadOnly() {
         MVMap<K, V> m = new MVMap<K, V>(keyType, valueType);
         m.readOnly = true;
         HashMap<String, String> config = New.hashMap();
-        config.put("id", String.valueOf(id));
-        config.put("createVersion", String.valueOf(createVersion));
+        config.put("id", Integer.toHexString(id));
+        config.put("createVersion", Long.toHexString(createVersion));
         m.init(store, config);
         m.root = root;
         return m;
@@ -1140,27 +1097,13 @@ public class MVMap<K, V> extends AbstractMap<K, V>
             DataUtils.appendMap(buff, "name", name);
         }
         if (createVersion != 0) {
-            DataUtils.appendMap(buff, "createVersion", createVersion);
+            DataUtils.appendMap(buff, "createVersion", Long.toHexString(createVersion));
         }
         String type = getType();
         if (type != null) {
             DataUtils.appendMap(buff, "type", type);
         }
         return buff.toString();
-    }
-
-    /**
-     * Rename the map.
-     *
-     * @param newMapName the name name
-     */
-    public void renameMap(String newMapName) {
-        beforeWrite();
-        try {
-            store.renameMap(this, newMapName);
-        } finally {
-            afterWrite();
-        }
     }
 
     void setWriteVersion(long writeVersion) {
@@ -1228,9 +1171,9 @@ public class MVMap<K, V> extends AbstractMap<K, V>
         }
 
         /**
-         * Set the key data type.
+         * Set the value data type.
          *
-         * @param valueType the key type
+         * @param valueType the value type
          * @return this
          */
         public Builder<K, V> valueType(DataType valueType) {

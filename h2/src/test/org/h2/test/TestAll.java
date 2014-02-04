@@ -27,6 +27,7 @@ import org.h2.test.db.TestCsv;
 import org.h2.test.db.TestDateStorage;
 import org.h2.test.db.TestDeadlock;
 import org.h2.test.db.TestDrop;
+import org.h2.test.db.TestDuplicateKeyUpdate;
 import org.h2.test.db.TestEncryptedDb;
 import org.h2.test.db.TestExclusive;
 import org.h2.test.db.TestFullText;
@@ -44,6 +45,7 @@ import org.h2.test.db.TestMultiThread;
 import org.h2.test.db.TestMultiThreadedKernel;
 import org.h2.test.db.TestOpenClose;
 import org.h2.test.db.TestOptimizations;
+import org.h2.test.db.TestCompatibilityOracle;
 import org.h2.test.db.TestOutOfMemory;
 import org.h2.test.db.TestPowerOff;
 import org.h2.test.db.TestQueryCache;
@@ -231,6 +233,9 @@ java -cp . org.h2.test.TestAll crash >testCrash.txt
 java org.h2.test.TestAll timer
 
 */
+
+    ;
+    private static final boolean MV_STORE = true;
 
     /**
      * If the test should run with many rows.
@@ -422,13 +427,14 @@ kill -9 `jps -l | grep "org.h2.test." | cut -d " " -f 1`
             if ("reopen".equals(args[0])) {
                 System.setProperty("h2.delayWrongPasswordMin", "0");
                 System.setProperty("h2.check2", "false");
-                System.setProperty("h2.lobInDatabase", "true");
                 System.setProperty("h2.analyzeAuto", "100");
                 System.setProperty("h2.pageSize", "64");
                 System.setProperty("h2.reopenShift", "5");
                 FilePathRec.register();
                 test.reopen = true;
                 TestReopen reopen = new TestReopen();
+                reopen.init();
+                reopen.config.mvStore = MV_STORE;
                 FilePathRec.setRecorder(reopen);
                 test.runTests();
             } else if ("crash".equals(args[0])) {
@@ -461,19 +467,27 @@ kill -9 `jps -l | grep "org.h2.test." | cut -d " " -f 1`
         } else {
             test.runTests();
             Profiler prof = new Profiler();
-            prof.depth = 8;
+            prof.depth = 16;
             prof.interval = 1;
             prof.startCollecting();
             if (test.mvStore) {
                 TestPerformance.main("-init", "-db", "9", "-size", "1000");
-                TestPerformance.main("-init", "-db", "1", "-size", "1000");
-                TestPerformance.main("-init", "-db", "9", "-size", "1000");
-                TestPerformance.main("-init", "-db", "1", "-size", "1000");
             } else {
                 TestPerformance.main("-init", "-db", "1");
             }
             prof.stopCollecting();
-            System.out.println(prof.getTop(3));
+            System.out.println(prof.getTop(30));
+            if (test.mvStore) {
+                prof = new Profiler();
+                prof.depth = 16;
+                prof.interval = 1;
+                prof.startCollecting();
+                TestPerformance.main("-init", "-db", "1", "-size", "1000");
+                prof.stopCollecting();
+                System.out.println(prof.getTop(3));
+                TestPerformance.main("-init", "-db", "1", "-size", "1000");
+                TestPerformance.main("-init", "-db", "9", "-size", "1000");
+            }
 //            Recover.execute("data", null);
 //            RunScript.execute("jdbc:h2:data/test2",
 //                 "sa1", "sa1", "data/test.h2.sql", null, false);
@@ -516,8 +530,7 @@ kill -9 `jps -l | grep "org.h2.test." | cut -d " " -f 1`
 
         coverage = isCoverage();
 
-        ;
-        mvStore = true;
+        mvStore = MV_STORE;
 
         smallLog = big = networked = memory = ssl = false;
         diskResult = traceSystemOut = diskUndo = false;
@@ -617,10 +630,12 @@ kill -9 `jps -l | grep "org.h2.test." | cut -d " " -f 1`
         new TestCheckpoint().runTest(this);
         new TestCluster().runTest(this);
         new TestCompatibility().runTest(this);
+        new TestCompatibilityOracle().runTest(this);
         new TestCsv().runTest(this);
         new TestDateStorage().runTest(this);
         new TestDeadlock().runTest(this);
         new TestDrop().runTest(this);
+        new TestDuplicateKeyUpdate().runTest(this);
         new TestEncryptedDb().runTest(this);
         new TestExclusive().runTest(this);
         new TestFullText().runTest(this);
@@ -680,7 +695,6 @@ kill -9 `jps -l | grep "org.h2.test." | cut -d " " -f 1`
         new TestJavaObject().runTest(this);
         new TestJavaObjectSerializer().runTest(this);
         new TestUrlJavaObjectSerializer().runTest(this);
-
         new TestLimitUpdates().runTest(this);
         new TestLobApi().runTest(this);
         new TestManyJdbcObjects().runTest(this);
@@ -714,9 +728,7 @@ kill -9 `jps -l | grep "org.h2.test." | cut -d " " -f 1`
         // synth
         new TestBtreeIndex().runTest(this);
         new TestDiskFull().runTest(this);
-
         new TestCrashAPI().runTest(this);
-
         new TestFuzzOptimizations().runTest(this);
         new TestLimit().runTest(this);
         new TestRandomSQL().runTest(this);
@@ -763,9 +775,7 @@ kill -9 `jps -l | grep "org.h2.test." | cut -d " " -f 1`
         new TestFile().runTest(this);
         new TestFileLock().runTest(this);
         new TestFileLockProcess().runTest(this);
-
         new TestFileLockSerialized().runTest(this);
-
         new TestFtp().runTest(this);
         new TestFileSystem().runTest(this);
         new TestIntArray().runTest(this);

@@ -25,15 +25,15 @@ import org.h2.util.MathUtils;
 /**
  * An encrypted file.
  */
-public class FilePathCrypt extends FilePathWrapper {
+public class FilePathEncrypt extends FilePathWrapper {
 
-    private static final String SCHEME = "crypt";
+    private static final String SCHEME = "encrypt";
 
     /**
      * Register this file system.
      */
     public static void register() {
-        FilePath.register(new FilePathCrypt());
+        FilePath.register(new FilePathEncrypt());
     }
 
     @Override
@@ -41,7 +41,7 @@ public class FilePathCrypt extends FilePathWrapper {
         String[] parsed = parse(name);
         FileChannel file = FileUtils.open(parsed[1], mode);
         byte[] passwordBytes = parsed[0].getBytes(Constants.UTF8);
-        return new FileCrypt(name, passwordBytes, file);
+        return new FileEncrypt(name, passwordBytes, file);
     }
 
     @Override
@@ -62,10 +62,10 @@ public class FilePathCrypt extends FilePathWrapper {
 
     @Override
     public long size() {
-        long size = getBase().size() - FileCrypt.HEADER_LENGTH;
+        long size = getBase().size() - FileEncrypt.HEADER_LENGTH;
         size = Math.max(0, size);
-        if ((size & FileCrypt.BLOCK_SIZE_MASK) != 0) {
-            size -= FileCrypt.BLOCK_SIZE;
+        if ((size & FileEncrypt.BLOCK_SIZE_MASK) != 0) {
+            size -= FileEncrypt.BLOCK_SIZE;
         }
         return size;
     }
@@ -123,7 +123,7 @@ public class FilePathCrypt extends FilePathWrapper {
     /**
      * An encrypted file with a read cache.
      */
-    public static class FileCrypt extends FileBase {
+    public static class FileEncrypt extends FileBase {
 
         /**
          * The block size.
@@ -157,8 +157,6 @@ public class FilePathCrypt extends FilePathWrapper {
 
         private final FileChannel base;
 
-        private final XTS xts;
-
         /**
          * The current position within the file, from a user perspective.
          */
@@ -171,9 +169,23 @@ public class FilePathCrypt extends FilePathWrapper {
 
         private final String name;
 
-        public FileCrypt(String name, byte[] encryptionKey, FileChannel base) throws IOException {
+        private XTS xts;
+
+        private byte[] encryptionKey;
+
+        public FileEncrypt(String name, byte[] encryptionKey, FileChannel base) {
+            // don't do any read or write operations here, because they could
+            // fail if the file is locked, and we want to give the caller a
+            // chance to lock the file first
             this.name = name;
             this.base = base;
+            this.encryptionKey = encryptionKey;
+        }
+
+        private void init() throws IOException {
+            if (xts != null) {
+                return;
+            }
             this.size = base.size() - HEADER_LENGTH;
             boolean newFile = size < 0;
             byte[] salt;
@@ -192,6 +204,7 @@ public class FilePathCrypt extends FilePathWrapper {
             }
             AES cipher = new AES();
             cipher.setKey(SHA256.getPBKDF2(encryptionKey, salt, HASH_ITERATIONS, 16));
+            encryptionKey = null;
             xts = new XTS(cipher);
         }
 
@@ -226,6 +239,7 @@ public class FilePathCrypt extends FilePathWrapper {
             if (len == 0) {
                 return 0;
             }
+            init();
             len = (int) Math.min(len, size - position);
             if (position >= size) {
                 return -1;
@@ -274,6 +288,7 @@ public class FilePathCrypt extends FilePathWrapper {
 
         @Override
         public int write(ByteBuffer src, long position) throws IOException {
+            init();
             int len = src.remaining();
             if ((position & BLOCK_SIZE_MASK) != 0 ||
                     (len & BLOCK_SIZE_MASK) != 0) {
@@ -343,11 +358,13 @@ public class FilePathCrypt extends FilePathWrapper {
 
         @Override
         public long size() throws IOException {
+            init();
             return size;
         }
 
         @Override
         public FileChannel truncate(long newSize) throws IOException {
+            init();
             if (newSize > size) {
                 return this;
             }

@@ -304,6 +304,17 @@ public class Server extends Tool implements Runnable, ShutdownHandler {
             shutdownTcpServer(tcpShutdownServer, tcpPassword, tcpShutdownForce, false);
         }
         try {
+            if (tcpStart) {
+                tcp = createTcpServer(args);
+                tcp.start();
+                out.println(tcp.getStatus());
+                tcp.setShutdownHandler(this);
+            }
+            if (pgStart) {
+                pg = createPgServer(args);
+                pg.start();
+                out.println(pg.getStatus());
+            }
             if (webStart) {
                 web = createWebServer(args);
                 web.setShutdownHandler(this);
@@ -329,17 +340,6 @@ public class Server extends Tool implements Runnable, ShutdownHandler {
                 }
             } else if (browserStart) {
                 out.println("The browser can only start if a web server is started (-web)");
-            }
-            if (tcpStart) {
-                tcp = createTcpServer(args);
-                tcp.start();
-                out.println(tcp.getStatus());
-                tcp.setShutdownHandler(this);
-            }
-            if (pgStart) {
-                pg = createPgServer(args);
-                pg.start();
-                out.println(pg.getStatus());
             }
         } catch (SQLException e) {
             stopAll();
@@ -406,6 +406,10 @@ public class Server extends Tool implements Runnable, ShutdownHandler {
      * Server server = Server.createWebServer(
      *     new String[] { "-trace" }).start();
      * </pre>
+     * Supported options are:
+     * -webPort, -webSSL, -webAllowOthers, -webDaemon,
+     * -trace, -ifExists, -baseDir, -properties.
+     * See the main method for details.
      *
      * @param args the argument list
      * @return the server
@@ -424,6 +428,10 @@ public class Server extends Tool implements Runnable, ShutdownHandler {
      * Server server = Server.createTcpServer(
      *     new String[] { "-tcpPort", "9123", "-tcpAllowOthers" }).start();
      * </pre>
+     * Supported options are:
+     * -tcpPort, -tcpSSL, -tcpPassword, -tcpAllowOthers, -tcpDaemon,
+     * -trace, -ifExists, -baseDir, -key.
+     * See the main method for details.
      *
      * @param args the argument list
      * @return the server
@@ -442,6 +450,10 @@ public class Server extends Tool implements Runnable, ShutdownHandler {
      * Server server =
      *     Server.createPgServer("-pgAllowOthers").start();
      * </pre>
+     * Supported options are:
+     * -pgPort, -pgAllowOthers, -pgDaemon,
+     * -trace, -ifExists, -baseDir, -key.
+     * See the main method for details.
      *
      * @param args the argument list
      * @return the server

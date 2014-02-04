@@ -106,7 +106,7 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
         long max = Math.max(1, maxMemory / segmentCount);
         for (int i = 0; i < segmentCount; i++) {
             segments[i] = new Segment<K, V>(
-                    max, averageMemory, stackMoveDistance);
+                    this, max, averageMemory, stackMoveDistance);
         }
     }
 
@@ -177,6 +177,16 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
      */
     protected int sizeOf(K key, V value) {
         return averageMemory;
+    }
+
+    /**
+     * This method is called after the value for the given key was removed.
+     * It is not called on clear or put when replacing a value.
+     *
+     * @param key the key
+     */
+    protected void onRemove(K key) {
+        // do nothing
     }
 
     /**
@@ -438,6 +448,8 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
          */
         long usedMemory;
 
+        private final CacheLIRS<K, V> cache;
+
         /**
          * How many other item are to be moved to the top of the stack before
          * the current item is moved.
@@ -468,16 +480,22 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
         /**
          * The stack of recently referenced elements. This includes all hot entries,
          * the recently referenced cold entries, and all non-resident cold entries.
+         * <p>
+         * There is always at least one entry: the head entry.
          */
         private Entry<K, V> stack;
 
         /**
          * The queue of resident cold entries.
+         * <p>
+         * There is always at least one entry: the head entry.
          */
         private Entry<K, V> queue;
 
         /**
          * The queue of non-resident cold entries.
+         * <p>
+         * There is always at least one entry: the head entry.
          */
         private Entry<K, V> queue2;
 
@@ -489,12 +507,14 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
         /**
          * Create a new cache.
          *
+         * @param cache the cache
          * @param maxMemory the maximum memory to use
          * @param averageMemory the average memory usage of an object
          * @param stackMoveDistance the number of other entries to be moved to
          *        the top of the stack before moving an entry to the top
          */
-        Segment(long maxMemory, int averageMemory, int stackMoveDistance) {
+        Segment(CacheLIRS<K, V> cache, long maxMemory, int averageMemory, int stackMoveDistance) {
+            this.cache = cache;
             setMaxMemory(maxMemory);
             setAverageMemory(averageMemory);
             this.stackMoveDistance = stackMoveDistance;
@@ -599,7 +619,7 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
                         removeFromStack(e);
                         if (wasEnd) {
                             // if moving the last entry, the last entry
-                            // could not be cold, which is not allowed
+                            // could now be cold, which is not allowed
                             pruneStack();
                         }
                         addToStack(e);
@@ -612,6 +632,8 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
                     // if they are on the stack
                     removeFromStack(e);
                     // which means a hot entry needs to become cold
+                    // (this entry is cold, that means there is at least one
+                    // more entry in the stack, which must be hot)
                     convertOldestHotToCold();
                 } else {
                     // cold entries that are not on the stack
@@ -724,10 +746,10 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
          * @param newCold a new cold entry
          */
         private void evict(Entry<K, V> newCold) {
-            // ensure there are not too many hot entries:
-            // left shift of 5 is multiplication by 32, that means if there are less
-            // than 1/32 (3.125%) cold entries, a new hot entry needs to become cold
-            while ((queueSize << 5) < mapSize) {
+            // ensure there are not too many hot entries: right shift of 5 is
+            // division by 32, that means if there are only 1/32 (3.125%) or
+            // less cold entries, a hot entry needs to become cold
+            while (queueSize <= (mapSize >>> 5) && stackSize > 0) {
                 convertOldestHotToCold();
             }
             if (stackSize > 0) {
@@ -740,6 +762,7 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
                 Entry<K, V> e = queue.queuePrev;
                 usedMemory -= e.memory;
                 removeFromQueue(e);
+                cache.onRemove(e.key);
                 e.value = null;
                 e.memory = 0;
                 addToQueue(queue2, e);
@@ -755,6 +778,11 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
         private void convertOldestHotToCold() {
             // the last entry of the stack is known to be hot
             Entry<K, V> last = stack.stackPrev;
+            if (last == stack) {
+                // never remove the stack head itself (this would mean the
+                // internal structure of the cache is corrupt)
+                throw new IllegalStateException();
+            }
             // remove from stack - which is done anyway in the stack pruning, but we
             // can do it here as well
             removeFromStack(last);
@@ -769,7 +797,10 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
         private void pruneStack() {
             while (true) {
                 Entry<K, V> last = stack.stackPrev;
-                if (last == stack || last.isHot()) {
+                // must stop at a hot entry or the stack head,
+                // but the stack head itself is also hot, so we
+                // don't have to test it
+                if (last.isHot()) {
                     break;
                 }
                 // the cold entry is still in the queue
@@ -810,6 +841,11 @@ public class CacheLIRS<K, V> extends AbstractMap<K, V> {
             stackSize++;
         }
 
+        /**
+         * Remove the entry from the stack. The head itself must not be removed.
+         *
+         * @param e the entry
+         */
         private void removeFromStack(Entry<K, V> e) {
             e.stackPrev.stackNext = e.stackNext;
             e.stackNext.stackPrev = e.stackPrev;

@@ -43,6 +43,8 @@ import org.h2.store.FileStore;
 import org.h2.store.InDoubtTransaction;
 import org.h2.store.LobStorageBackend;
 import org.h2.store.LobStorageFrontend;
+import org.h2.store.LobStorageInterface;
+import org.h2.store.LobStorageMap;
 import org.h2.store.PageStore;
 import org.h2.store.WriterThread;
 import org.h2.store.fs.FileUtils;
@@ -171,7 +173,7 @@ public class Database implements DataHandler {
     private SourceCompiler compiler;
     private volatile boolean metaTablesInitialized;
     private boolean flushOnEachCommit;
-    private LobStorageBackend lobStorage;
+    private LobStorageInterface lobStorage;
     private final int pageSize;
     private int defaultTableType = Table.TYPE_CACHED;
     private final DbSettings dbSettings;
@@ -196,8 +198,7 @@ public class Database implements DataHandler {
         this.fileEncryptionKey = ci.getFileEncryptionKey();
         this.databaseName = name;
         this.databaseShortName = parseDatabaseShortName();
-        this.maxLengthInplaceLob = SysProperties.LOB_IN_DATABASE ?
-                Constants.DEFAULT_MAX_LENGTH_INPLACE_LOB2 : Constants.DEFAULT_MAX_LENGTH_INPLACE_LOB;
+        this.maxLengthInplaceLob = Constants.DEFAULT_MAX_LENGTH_INPLACE_LOB;
         this.cipher = cipher;
         String lockMethodName = ci.getProperty("FILE_LOCK", null);
         this.accessModeData = StringUtils.toLowerEnglish(ci.getProperty("ACCESS_MODE_DATA", "rw"));
@@ -208,7 +209,15 @@ public class Database implements DataHandler {
         if ("r".equals(accessModeData)) {
             readOnly = true;
         }
-        this.fileLockMethod = FileLock.getFileLockMethod(lockMethodName);
+        if (dbSettings.mvStore && lockMethodName == null) {
+            if (autoServerMode) {
+                fileLockMethod = FileLock.LOCK_FILE;
+            } else {
+                fileLockMethod = FileLock.LOCK_FS;
+            }
+        } else {
+            fileLockMethod = FileLock.getFileLockMethod(lockMethodName);
+        }
         this.databaseURL = ci.getURL();
         String listener = ci.removeProperty("DATABASE_EVENT_LISTENER", null);
         if (listener != null) {
@@ -467,7 +476,10 @@ public class Database implements DataHandler {
      * @return true if one exists
      */
     static boolean exists(String name) {
-        return FileUtils.exists(name + Constants.SUFFIX_PAGE_FILE);
+        if (FileUtils.exists(name + Constants.SUFFIX_PAGE_FILE)) {
+            return true;
+        }
+        return FileUtils.exists(name + Constants.SUFFIX_MV_FILE);
     }
 
     /**
@@ -531,12 +543,17 @@ public class Database implements DataHandler {
             String dataFileName = databaseName + ".data.db";
             boolean existsData = FileUtils.exists(dataFileName);
             String pageFileName = databaseName + Constants.SUFFIX_PAGE_FILE;
+            String mvFileName = databaseName + Constants.SUFFIX_MV_FILE;
             boolean existsPage = FileUtils.exists(pageFileName);
-            if (existsData && !existsPage) {
+            boolean existsMv = FileUtils.exists(mvFileName);
+            if (existsData && (!existsPage && !existsMv)) {
                 throw DbException.get(ErrorCode.FILE_VERSION_ERROR_1,
                         "Old database: " + dataFileName + " - please convert the database to a SQL script and re-create it.");
             }
             if (existsPage && !FileUtils.canWrite(pageFileName)) {
+                readOnly = true;
+            }
+            if (existsMv && !FileUtils.canWrite(mvFileName)) {
                 readOnly = true;
             }
             if (readOnly) {
@@ -671,6 +688,7 @@ public class Database implements DataHandler {
         }
         if (mvStore != null) {
             mvStore.initTransactions();
+            mvStore.removeTemporaryMaps();
         }
         recompileInvalidViews(systemSession);
         starting = false;
@@ -798,7 +816,7 @@ public class Database implements DataHandler {
      * @param session the session
      */
     public void verifyMetaLocked(Session session) {
-        if (!lockMeta(session) && lockMode != 0) {
+        if (!lockMeta(session) && lockMode != Constants.LOCK_MODE_OFF) {
             throw DbException.throwInternalError();
         }
     }
@@ -832,7 +850,7 @@ public class Database implements DataHandler {
             Cursor cursor = metaIdIndex.find(session, r, r);
             if (cursor.next()) {
                 if (SysProperties.CHECK) {
-                    if (lockMode != 0 && !wasLocked) {
+                    if (lockMode != Constants.LOCK_MODE_OFF && !wasLocked) {
                         throw DbException.throwInternalError();
                     }
                 }
@@ -1261,11 +1279,9 @@ public class Database implements DataHandler {
         reconnectModified(false);
         if (mvStore != null) {
             if (!readOnly && compactMode != 0) {
-                mvStore.store();
                 mvStore.compactFile(dbSettings.maxCompactTime);
-            } else {
-                mvStore.close(dbSettings.maxCompactTime);
             }
+            mvStore.close(dbSettings.maxCompactTime);
         }
         closeFiles();
         if (persistent && lock == null && fileLockMethod != FileLock.LOCK_NO && fileLockMethod != FileLock.LOCK_FS) {
@@ -1644,6 +1660,8 @@ public class Database implements DataHandler {
         for (Table t : getAllTablesAndViews(false)) {
             if (except == t) {
                 continue;
+            } else if (Table.VIEW.equals(t.getTableType())) {
+                continue;
             }
             set.clear();
             t.addDependencies(set);
@@ -1787,7 +1805,7 @@ public class Database implements DataHandler {
         }
         if (mvStore != null) {
             int millis = value < 0 ? 0 : value;
-            mvStore.getStore().setWriteDelay(millis);
+            mvStore.getStore().setAutoCommitDelay(millis);
         }
     }
 
@@ -1837,8 +1855,10 @@ public class Database implements DataHandler {
             mvStore.prepareCommit(session, transaction);
             return;
         }
-        pageStore.flushLog();
-        pageStore.prepareCommit(session, transaction);
+        if (pageStore != null) {
+            pageStore.flushLog();
+            pageStore.prepareCommit(session, transaction);
+        }
     }
 
     /**
@@ -1892,7 +1912,7 @@ public class Database implements DataHandler {
         }
         if (mvStore != null) {
             try {
-                mvStore.store();
+                mvStore.flush();
             } catch (RuntimeException e) {
                 backgroundException = DbException.convert(e);
                 throw e;
@@ -2262,8 +2282,11 @@ public class Database implements DataHandler {
     }
 
     public PageStore getPageStore() {
-        if (dbSettings.mvStore && mvStore == null) {
-            mvStore = MVTableEngine.init(this);
+        if (dbSettings.mvStore) {
+            if (mvStore == null) {
+                mvStore = MVTableEngine.init(this);
+            }
+            return null;
         }
         if (pageStore == null) {
             pageStore = new PageStore(this, databaseName + Constants.SUFFIX_PAGE_FILE, accessModeData, cacheSize);
@@ -2407,7 +2430,7 @@ public class Database implements DataHandler {
                 }
             }
             if (mvStore != null) {
-                mvStore.store();
+                mvStore.flush();
             }
         }
         getTempFileDeleter().deleteUnused();
@@ -2481,9 +2504,13 @@ public class Database implements DataHandler {
     }
 
     @Override
-    public LobStorageBackend getLobStorage() {
+    public LobStorageInterface getLobStorage() {
         if (lobStorage == null) {
-            lobStorage = new LobStorageBackend(this);
+            if (dbSettings.mvStore) {
+                lobStorage = new LobStorageMap(this);
+            } else {
+                lobStorage = new LobStorageBackend(this);
+            }
         }
         return lobStorage;
     }
@@ -2502,6 +2529,10 @@ public class Database implements DataHandler {
         return conn;
     }
 
+    public Session getLobSession() {
+        return lobSession;
+    }
+
     public void setLogMode(int log) {
         if (log < 0 || log > 2) {
             throw DbException.getInvalidValueException("LOG", log);
@@ -2516,11 +2547,17 @@ public class Database implements DataHandler {
             this.logMode = log;
             pageStore.setLogMode(log);
         }
+        if (mvStore != null) {
+            this.logMode = log;
+        }
     }
 
     public int getLogMode() {
         if (pageStore != null) {
             return pageStore.getLogMode();
+        }
+        if (mvStore != null) {
+            return logMode;
         }
         return PageStore.LOG_MODE_OFF;
     }

@@ -17,6 +17,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
+import java.util.Map;
+
 import org.h2.engine.Constants;
 import org.h2.util.New;
 
@@ -72,9 +74,14 @@ public class DataUtils {
     public static final int ERROR_TRANSACTION_CORRUPT = 100;
 
     /**
-     * A lock timeout occurred.
+     * An entry is still locked by another transaction.
      */
-    public static final int ERROR_TRANSACTION_LOCK_TIMEOUT = 101;
+    public static final int ERROR_TRANSACTION_LOCKED = 101;
+
+    /**
+     * A very old transaction is still open.
+     */
+    public static final int ERROR_TRANSACTION_STILL_OPEN = 102;
 
     /**
      * The type for leaf page.
@@ -396,7 +403,7 @@ public class DataUtils {
             }
             throw newIllegalStateException(
                     ERROR_READING_FAILED,
-                    "Reading from {0} failed; file length {1} read length {1} at {2}",
+                    "Reading from {0} failed; file length {1} read length {2} at {3}",
                     file, size, dst.remaining(), pos, e);
         }
     }
@@ -563,7 +570,7 @@ public class DataUtils {
         }
         buff.append(key).append(':');
         String v = value.toString();
-        if (v.indexOf(',') < 0 && v.indexOf('\"') < 0) {
+        if (v.indexOf(',') < 0 && v.indexOf('\"') < 0 && v.indexOf('}') < 0) {
             buff.append(value);
         } else {
             buff.append('\"');
@@ -588,6 +595,9 @@ public class DataUtils {
     public static HashMap<String, String> parseMap(String s) {
         HashMap<String, String> map = New.hashMap();
         for (int i = 0, size = s.length(); i < size;) {
+            if (s.charAt(i) == '}') {
+                break;
+            }
             int startKey = i;
             i = s.indexOf(':', i);
             if (i < 0) {
@@ -599,6 +609,9 @@ public class DataUtils {
             while (i < size) {
                 char c = s.charAt(i++);
                 if (c == ',') {
+                    break;
+                } else if (c == '}') {
+                    i--;
                     break;
                 } else if (c == '\"') {
                     while (i < size) {
@@ -634,7 +647,8 @@ public class DataUtils {
     public static int getFletcher32(byte[] bytes, int length) {
         int s1 = 0xffff, s2 = 0xffff;
         for (int i = 0; i < length;) {
-            for (int end = Math.min(i + 718, length); i < end;) {
+            // reduce after 360 words (each word is two bytes)
+            for (int end = Math.min(i + 720, length); i < end;) {
                 int x = ((bytes[i++] & 0xff) << 8) | (bytes[i++] & 0xff);
                 s2 += s1 += x;
             }
@@ -727,7 +741,11 @@ public class DataUtils {
         for (int i = 0; i < arguments.length; i++) {
             Object a = arguments[i];
             if (!(a instanceof Exception)) {
-                arguments[i] = a == null ? "null" : a.toString();
+                String s = a == null ? "null" : a.toString();
+                if (s.length() > 1000) {
+                    s = s.substring(0, 1000) + "...";
+                }
+                arguments[i] = s;
             }
         }
         return MessageFormat.format(message, arguments) +
@@ -810,42 +828,77 @@ public class DataUtils {
     }
 
     /**
-     * Parse a string as a number.
+     * Parse a string as a hexadecimal number.
      *
      * @param x the number
      * @param defaultValue if x is null
      * @return the parsed value
      * @throws IllegalStateException if parsing fails
      */
-    public static long parseLong(String x, long defaultValue) {
+    public static long parseHexLong(String x, long defaultValue) {
         if (x == null) {
             return defaultValue;
         }
         try {
-            return Long.parseLong(x);
+            return Long.parseLong(x, 16);
         } catch (NumberFormatException e) {
             throw newIllegalStateException(ERROR_FILE_CORRUPT,
-                    "Error parsing the value {0} as a long", x, e);
+                    "Error parsing the value {0}", x, e);
+        }
+    }
+    
+    /**
+     * Parse a string as a hexadecimal number.
+     *
+     * @param x the number
+     * @param defaultValue if x is null
+     * @return the parsed value
+     * @throws IllegalStateException if parsing fails
+     */
+    public static int parseHexInt(String x, int defaultValue) {
+        if (x == null) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(x, 16);
+        } catch (NumberFormatException e) {
+            throw newIllegalStateException(ERROR_FILE_CORRUPT,
+                    "Error parsing the value {0}", x, e);
         }
     }
 
     /**
-     * Try to parse a string as a number.
+     * An entry of a map.
      *
-     * @param x the number
-     * @param defaultValue if x is null
-     * @param errorValue if parsing fails
-     * @return the parsed value if parsing is possible
+     * @param <K> the key type
+     * @param <V> the value type
      */
-    public static long parseLong(String x, long defaultValue, long errorValue) {
-        if (x == null) {
-            return defaultValue;
+    public static class MapEntry<K, V> implements Map.Entry<K, V> {
+
+        private final K key;
+        private V value;
+
+        public MapEntry(K key, V value) {
+            this.key = key;
+            this.value = value;
         }
-        try {
-            return Long.parseLong(x);
-        } catch (NumberFormatException e) {
-            return errorValue;
+
+        @Override
+        public K getKey() {
+            return key;
         }
+
+        @Override
+        public V getValue() {
+            return value;
+        }
+
+        @Override
+        public V setValue(V value) {
+            throw DataUtils.newUnsupportedOperationException(
+                    "Updating the value is not supported");
+        }
+
     }
 
 }

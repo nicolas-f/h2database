@@ -15,7 +15,6 @@ import org.h2.mvstore.MVMap;
 import org.h2.mvstore.Page;
 import org.h2.mvstore.type.DataType;
 import org.h2.mvstore.type.ObjectDataType;
-import org.h2.mvstore.type.StringDataType;
 import org.h2.util.New;
 
 /**
@@ -52,7 +51,6 @@ public class MVRTreeMap<V> extends MVMap<SpatialKey, V> {
     @Override
     @SuppressWarnings("unchecked")
     public V get(Object key) {
-        checkOpen();
         return (V) get(root, key);
     }
 
@@ -63,7 +61,6 @@ public class MVRTreeMap<V> extends MVMap<SpatialKey, V> {
      * @return the iterator
      */
     public RTreeCursor findIntersectingKeys(SpatialKey x) {
-        checkOpen();
         return new RTreeCursor(root, x) {
             @Override
             protected boolean check(boolean leaf, SpatialKey key, SpatialKey test) {
@@ -79,7 +76,6 @@ public class MVRTreeMap<V> extends MVMap<SpatialKey, V> {
      * @return the iterator
      */
     public RTreeCursor findContainedKeys(SpatialKey x) {
-        checkOpen();
         return new RTreeCursor(root, x) {
             @Override
             protected boolean check(boolean leaf, SpatialKey key, SpatialKey test) {
@@ -235,8 +231,9 @@ public class MVRTreeMap<V> extends MVMap<SpatialKey, V> {
                     long[] children = { p.getPos(), split.getPos(), 0 };
                     Page[] childrenPages = { p, split, null };
                     long[] counts = { p.getTotalCount(), split.getTotalCount(), 0 };
-                    p = Page.create(this, v, 2,
-                            keys, null, children, childrenPages, counts,
+                    p = Page.create(this, v,
+                            2, keys, null,
+                            3, children, childrenPages, counts,
                             totalCount, 0, 0);
                     // now p is a node; continues
                 }
@@ -258,30 +255,31 @@ public class MVRTreeMap<V> extends MVMap<SpatialKey, V> {
      * @param p the page
      * @param writeVersion the write version
      * @param key the key
-     * @param value the value
-     * @return the old value
+     * @param value the new value
+     * @return the old value (never null)
      */
     private Object set(Page p, long writeVersion, Object key, Object value) {
-        if (!p.isLeaf()) {
+        if (p.isLeaf()) {
+            for (int i = 0; i < p.getKeyCount(); i++) {
+                if (keyType.equals(p.getKey(i), key)) {
+                    return p.setValue(i, value);
+                }
+            }
+        } else {
             for (int i = 0; i < p.getKeyCount(); i++) {
                 if (contains(p, i, key)) {
-                    Page c = copyOnWrite(p.getChildPage(i), writeVersion);
-                    Object result = set(c, writeVersion, key, value);
-                    if (result != null) {
+                    Page c = p.getChildPage(i);
+                    if (get(c, key) != null) {
+                        c = copyOnWrite(c, writeVersion);
+                        Object result = set(c, writeVersion, key, value);
                         p.setChild(i, c);
                         p.setCounts(i, c);
                         return result;
                     }
                 }
             }
-        } else {
-            for (int i = 0; i < p.getKeyCount(); i++) {
-                if (keyType.equals(p.getKey(i), key)) {
-                    return p.setValue(i, value);
-                }
-            }
         }
-        return null;
+        throw DataUtils.newIllegalStateException(DataUtils.ERROR_INTERNAL, "Not found: {0}", key);
     }
 
     private void add(Page p, long writeVersion, Object key, Object value) {
@@ -432,8 +430,9 @@ public class MVRTreeMap<V> extends MVMap<SpatialKey, V> {
         Object[] values = leaf ? new Object[4] : null;
         long[] c = leaf ? null : new long[1];
         Page[] cp = leaf ? null : new Page[1];
-        return Page.create(this, writeVersion, 0,
-                new Object[4], values, c, cp, c, 0, 0, 0);
+        return Page.create(this, writeVersion,
+                0, new Object[4], values,
+                leaf ? 0 : 1, c, cp, c, 0, 0, 0);
     }
 
     private static void move(Page source, Page target, int sourceIndex) {
@@ -480,7 +479,7 @@ public class MVRTreeMap<V> extends MVMap<SpatialKey, V> {
     /**
      * A cursor to iterate over a subset of the keys.
      */
-    static class RTreeCursor implements Iterator<SpatialKey> {
+    public static class RTreeCursor implements Iterator<SpatialKey> {
 
         private final SpatialKey filter;
         private CursorPos pos;
@@ -745,7 +744,7 @@ public class MVRTreeMap<V> extends MVMap<SpatialKey, V> {
          * @param valueType the key type
          * @return this
          */
-        public Builder<V> valueType(StringDataType valueType) {
+        public Builder<V> valueType(DataType valueType) {
             this.valueType = valueType;
             return this;
         }

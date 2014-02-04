@@ -76,17 +76,19 @@ public class DbProcedure {
         ResultSet rs = meta.getProcedureColumns(null, schema.name, name, null);
         ArrayList<DbColumn> list = New.arrayList();
         while (rs.next()) {
-            DbColumn column = new DbColumn(schema.getContents(), rs);
-            if(column.getPosition()>0) { //Not the return type
+            DbColumn column = DbColumn.getProcedureColumn(schema.getContents(), rs);
+            if (column.getPosition() > 0) {
+                // Not the return type
                 list.add(column);
             }
         }
         rs.close();
         parameters = new DbColumn[list.size()];
         // Store the parameter in the good position [1-n]
-        for(int i=0;i<parameters.length;i++) {
+        for (int i = 0; i < parameters.length; i++) {
             DbColumn column = list.get(i);
-            if(column.getPosition()>0 && column.getPosition() <= parameters.length) {
+            if (column.getPosition() > 0
+                    && column.getPosition() <= parameters.length) {
                 parameters[column.getPosition() - 1] = column;
             }
         }

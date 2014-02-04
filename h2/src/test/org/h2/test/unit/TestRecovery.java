@@ -43,11 +43,9 @@ public class TestRecovery extends TestBase {
         }
         testRecoverClob();
         testRecoverFulltext();
-        if (!config.mvStore) {
-            testRedoTransactions();
-            testCorrupt();
-            testWithTransactionLog();
-        }
+        testRedoTransactions();
+        testCorrupt();
+        testWithTransactionLog();
         testCompressedAndUncompressed();
         testRunScript();
     }
@@ -77,6 +75,8 @@ public class TestRecovery extends TestBase {
         Recover.main("-dir", getBaseDir(), "-db", "recovery");
         DeleteDbFiles.execute(getBaseDir(), "recovery", true);
         conn = getConnection("recovery;init=runscript from '" + getBaseDir() + "/recovery.h2.sql'");
+        stat = conn.createStatement();
+        stat.execute("select * from test");
         conn.close();
     }
 
@@ -96,6 +96,10 @@ public class TestRecovery extends TestBase {
     }
 
     private void testRedoTransactions() throws Exception {
+        if (config.mvStore) {
+            // not needed for MV_STORE=TRUE
+            return;
+        }
         DeleteDbFiles.execute(getBaseDir(), "recovery", true);
         Connection conn = getConnection("recovery");
         Statement stat = conn.createStatement();
@@ -135,6 +139,10 @@ public class TestRecovery extends TestBase {
     }
 
     private void testCorrupt() throws Exception {
+        if (config.mvStore) {
+            // not needed for MV_STORE=TRUE
+            return;
+        }
         DeleteDbFiles.execute(getBaseDir(), "recovery", true);
         Connection conn = getConnection("recovery");
         Statement stat = conn.createStatement();
@@ -161,6 +169,10 @@ public class TestRecovery extends TestBase {
     }
 
     private void testWithTransactionLog() throws SQLException {
+        if (config.mvStore) {
+            // not needed for MV_STORE=TRUE
+            return;
+        }
         DeleteDbFiles.execute(getBaseDir(), "recovery", true);
         Connection conn = getConnection("recovery");
         Statement stat = conn.createStatement();

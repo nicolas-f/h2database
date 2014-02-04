@@ -19,6 +19,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.UUID;
 import org.h2.mvstore.DataUtils;
+import org.h2.mvstore.WriteBuffer;
 import org.h2.util.New;
 
 /**
@@ -94,7 +95,8 @@ public class ObjectDataType implements DataType {
             Float.class, Double.class, BigDecimal.class, String.class,
             UUID.class, Date.class };
 
-    private static final HashMap<Class<?>, Integer> COMMON_CLASSES_MAP = New.hashMap();
+    private static final HashMap<Class<?>, Integer> COMMON_CLASSES_MAP = New
+            .hashMap();
 
     private AutoDetectDataType last = new StringType(this);
 
@@ -109,10 +111,24 @@ public class ObjectDataType implements DataType {
     }
 
     @Override
-    public ByteBuffer write(ByteBuffer buff, Object obj) {
-        return last.write(buff, obj);
+    public void read(ByteBuffer buff, Object[] obj, int len, boolean key) {
+        for (int i = 0; i < len; i++) {
+            obj[i] = read(buff);
+        }
+    }
+    
+    @Override
+    public void write(WriteBuffer buff, Object[] obj, int len, boolean key) {
+        for (int i = 0; i < len; i++) {
+            write(buff, obj[i]);
+        }
     }
 
+    @Override
+    public void write(WriteBuffer buff, Object obj) {
+        last.write(buff, obj);
+    }
+    
     private AutoDetectDataType newType(int typeId) {
         switch (typeId) {
         case TYPE_NULL:
@@ -148,8 +164,7 @@ public class ObjectDataType implements DataType {
         case TYPE_SERIALIZED_OBJECT:
             return new SerializedObjectType(this);
         }
-        throw DataUtils.newIllegalStateException(
-                DataUtils.ERROR_INTERNAL,
+        throw DataUtils.newIllegalStateException(DataUtils.ERROR_INTERNAL,
                 "Unsupported type {0}", typeId);
     }
 
@@ -160,7 +175,7 @@ public class ObjectDataType implements DataType {
         if (tag <= TYPE_SERIALIZED_OBJECT) {
             typeId = tag;
         } else {
-            switch(tag) {
+            switch (tag) {
             case TAG_BOOLEAN_TRUE:
                 typeId = TYPE_BOOLEAN;
                 break;
@@ -196,23 +211,26 @@ public class ObjectDataType implements DataType {
             default:
                 if (tag >= TAG_INTEGER_0_15 && tag <= TAG_INTEGER_0_15 + 15) {
                     typeId = TYPE_INT;
-                } else if (tag >= TAG_STRING_0_15 && tag <= TAG_STRING_0_15 + 15) {
+                } else if (tag >= TAG_STRING_0_15
+                        && tag <= TAG_STRING_0_15 + 15) {
                     typeId = TYPE_STRING;
                 } else if (tag >= TAG_LONG_0_7 && tag <= TAG_LONG_0_7 + 7) {
                     typeId = TYPE_LONG;
-                } else if (tag >= TAG_BYTE_ARRAY_0_15 && tag <= TAG_BYTE_ARRAY_0_15 + 15) {
+                } else if (tag >= TAG_BYTE_ARRAY_0_15
+                        && tag <= TAG_BYTE_ARRAY_0_15 + 15) {
                     typeId = TYPE_ARRAY;
                 } else {
                     throw DataUtils.newIllegalStateException(
-                            DataUtils.ERROR_FILE_CORRUPT,
-                            "Unknown tag {0}", tag);
+                            DataUtils.ERROR_FILE_CORRUPT, "Unknown tag {0}",
+                            tag);
                 }
             }
         }
-        if (typeId != last.typeId) {
-            last = newType(typeId);
+        AutoDetectDataType t = last;
+        if (typeId != t.typeId) {
+            last = t = newType(typeId);
         }
-        return last.read(buff, tag);
+        return t.read(buff, tag);
     }
 
     private static int getTypeId(Object obj) {
@@ -252,7 +270,7 @@ public class ObjectDataType implements DataType {
 
     /**
      * Switch the last remembered type to match the type of the given object.
-     *
+     * 
      * @param obj the object
      * @return the auto-detected type used
      */
@@ -260,14 +278,14 @@ public class ObjectDataType implements DataType {
         int typeId = getTypeId(obj);
         AutoDetectDataType l = last;
         if (typeId != l.typeId) {
-            l = last = newType(typeId);
+            last = l = newType(typeId);
         }
         return l;
     }
 
     /**
      * Check whether this object is a BigInteger.
-     *
+     * 
      * @param obj the object
      * @return true if yes
      */
@@ -277,7 +295,7 @@ public class ObjectDataType implements DataType {
 
     /**
      * Check whether this object is a BigDecimal.
-     *
+     * 
      * @param obj the object
      * @return true if yes
      */
@@ -287,7 +305,7 @@ public class ObjectDataType implements DataType {
 
     /**
      * Check whether this object is a date.
-     *
+     * 
      * @param obj the object
      * @return true if yes
      */
@@ -297,7 +315,7 @@ public class ObjectDataType implements DataType {
 
     /**
      * Check whether this object is an array.
-     *
+     * 
      * @param obj the object
      * @return true if yes
      */
@@ -307,7 +325,7 @@ public class ObjectDataType implements DataType {
 
     /**
      * Get the class id, or null if not found.
-     *
+     * 
      * @param clazz the class
      * @return the class id or null
      */
@@ -324,7 +342,7 @@ public class ObjectDataType implements DataType {
 
     /**
      * Serialize the object to a byte array.
-     *
+     * 
      * @param obj the object to serialize
      * @return the byte array
      */
@@ -342,7 +360,7 @@ public class ObjectDataType implements DataType {
 
     /**
      * De-serialize the byte array to an object.
-     *
+     * 
      * @param data the byte array
      * @return the object
      */
@@ -364,7 +382,7 @@ public class ObjectDataType implements DataType {
      * is returned. If the contents and lengths are the same, 0 is returned.
      * <p>
      * This method interprets bytes as unsigned.
-     *
+     * 
      * @param data1 the first byte array (must not be null)
      * @param data2 the second byte array (must not be null)
      * @return the result of the comparison (-1, 1 or 0)
@@ -414,20 +432,33 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object o) {
-            return getType(o).write(buff, o);
+        public void write(WriteBuffer buff, Object[] obj, int len, boolean key) {
+            for (int i = 0; i < len; i++) {
+                write(buff, obj[i]);
+            }
+        }
+
+        @Override
+        public void write(WriteBuffer buff, Object o) {
+            getType(o).write(buff, o);
+        }
+        
+        @Override
+        public void read(ByteBuffer buff, Object[] obj, int len, boolean key) {
+            for (int i = 0; i < len; i++) {
+                obj[i] = read(buff);
+            }
         }
 
         @Override
         public final Object read(ByteBuffer buff) {
-            throw DataUtils.newIllegalStateException(
-                    DataUtils.ERROR_INTERNAL,
+            throw DataUtils.newIllegalStateException(DataUtils.ERROR_INTERNAL,
                     "Internal error");
         }
 
         /**
          * Get the type for the given object.
-         *
+         * 
          * @param o the object
          * @return the type
          */
@@ -437,7 +468,7 @@ public class ObjectDataType implements DataType {
 
         /**
          * Read an object from the buffer.
-         *
+         * 
          * @param buff the buffer
          * @param tag the first byte of the object (usually the type)
          * @return the read object
@@ -473,12 +504,12 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (obj != null) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             buff.put((byte) TYPE_NULL);
-            return buff;
         }
 
         @Override
@@ -513,13 +544,13 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof Boolean)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             int tag = ((Boolean) obj) ? TAG_BOOLEAN_TRUE : TYPE_BOOLEAN;
             buff.put((byte) tag);
-            return buff;
         }
 
         @Override
@@ -554,13 +585,13 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof Byte)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             buff.put((byte) TYPE_BYTE);
             buff.put(((Byte) obj).byteValue());
-            return buff;
         }
 
         @Override
@@ -595,13 +626,13 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof Character)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             buff.put((byte) TYPE_CHAR);
             buff.putChar(((Character) obj).charValue());
-            return buff;
         }
 
         @Override
@@ -636,13 +667,13 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof Short)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             buff.put((byte) TYPE_SHORT);
             buff.putShort(((Short) obj).shortValue());
-            return buff;
         }
 
         @Override
@@ -677,30 +708,26 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof Integer)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             int x = (Integer) obj;
             if (x < 0) {
                 // -Integer.MIN_VALUE is smaller than 0
                 if (-x < 0 || -x > DataUtils.COMPRESSED_VAR_INT_MAX) {
-                    buff.put((byte) TAG_INTEGER_FIXED);
-                    buff.putInt(x);
+                    buff.put((byte) TAG_INTEGER_FIXED).putInt(x);
                 } else {
-                    buff.put((byte) TAG_INTEGER_NEGATIVE);
-                    DataUtils.writeVarInt(buff, -x);
+                    buff.put((byte) TAG_INTEGER_NEGATIVE).putVarInt(-x);
                 }
             } else if (x <= 15) {
                 buff.put((byte) (TAG_INTEGER_0_15 + x));
             } else if (x <= DataUtils.COMPRESSED_VAR_INT_MAX) {
-                buff.put((byte) TYPE_INT);
-                DataUtils.writeVarInt(buff, x);
+                buff.put((byte) TYPE_INT).putVarInt(x);
             } else {
-                buff.put((byte) TAG_INTEGER_FIXED);
-                buff.putInt(x);
+                buff.put((byte) TAG_INTEGER_FIXED).putInt(x);
             }
-            return buff;
         }
 
         @Override
@@ -743,9 +770,10 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof Long)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             long x = (Long) obj;
             if (x < 0) {
@@ -755,18 +783,17 @@ public class ObjectDataType implements DataType {
                     buff.putLong(x);
                 } else {
                     buff.put((byte) TAG_LONG_NEGATIVE);
-                    DataUtils.writeVarLong(buff, -x);
+                    buff.putVarLong(-x);
                 }
             } else if (x <= 7) {
                 buff.put((byte) (TAG_LONG_0_7 + x));
             } else if (x <= DataUtils.COMPRESSED_VAR_LONG_MAX) {
                 buff.put((byte) TYPE_LONG);
-                DataUtils.writeVarLong(buff, x);
+                buff.putVarLong(x);
             } else {
                 buff.put((byte) TAG_LONG_FIXED);
                 buff.putLong(x);
             }
-            return buff;
         }
 
         @Override
@@ -809,27 +836,25 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof Float)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             float x = (Float) obj;
             int f = Float.floatToIntBits(x);
             if (f == ObjectDataType.FLOAT_ZERO_BITS) {
                 buff.put((byte) TAG_FLOAT_0);
             } else if (f == ObjectDataType.FLOAT_ONE_BITS) {
-                    buff.put((byte) TAG_FLOAT_1);
+                buff.put((byte) TAG_FLOAT_1);
             } else {
                 int value = Integer.reverse(f);
                 if (value >= 0 && value <= DataUtils.COMPRESSED_VAR_INT_MAX) {
-                    buff.put((byte) TYPE_FLOAT);
-                    DataUtils.writeVarInt(buff, value);
+                    buff.put((byte) TYPE_FLOAT).putVarInt(value);
                 } else {
-                    buff.put((byte) TAG_FLOAT_FIXED);
-                    buff.putFloat(x);
+                    buff.put((byte) TAG_FLOAT_FIXED).putFloat(x);
                 }
             }
-            return buff;
         }
 
         @Override
@@ -842,7 +867,8 @@ public class ObjectDataType implements DataType {
             case TAG_FLOAT_FIXED:
                 return buff.getFloat();
             }
-            return Float.intBitsToFloat(Integer.reverse(DataUtils.readVarInt(buff)));
+            return Float.intBitsToFloat(Integer.reverse(DataUtils
+                    .readVarInt(buff)));
         }
 
     }
@@ -872,27 +898,27 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof Double)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             double x = (Double) obj;
             long d = Double.doubleToLongBits(x);
             if (d == ObjectDataType.DOUBLE_ZERO_BITS) {
                 buff.put((byte) TAG_DOUBLE_0);
             } else if (d == ObjectDataType.DOUBLE_ONE_BITS) {
-                    buff.put((byte) TAG_DOUBLE_1);
+                buff.put((byte) TAG_DOUBLE_1);
             } else {
                 long value = Long.reverse(d);
                 if (value >= 0 && value <= DataUtils.COMPRESSED_VAR_LONG_MAX) {
                     buff.put((byte) TYPE_DOUBLE);
-                    DataUtils.writeVarLong(buff, value);
+                    buff.putVarLong(value);
                 } else {
                     buff.put((byte) TAG_DOUBLE_FIXED);
                     buff.putDouble(x);
                 }
             }
-            return buff;
         }
 
         @Override
@@ -905,7 +931,8 @@ public class ObjectDataType implements DataType {
             case TAG_DOUBLE_FIXED:
                 return buff.getDouble();
             }
-            return Double.longBitsToDouble(Long.reverse(DataUtils.readVarLong(buff)));
+            return Double.longBitsToDouble(Long.reverse(DataUtils
+                    .readVarLong(buff)));
         }
 
     }
@@ -935,9 +962,10 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!isBigInteger(obj)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             BigInteger x = (BigInteger) obj;
             if (BigInteger.ZERO.equals(x)) {
@@ -947,17 +975,14 @@ public class ObjectDataType implements DataType {
             } else {
                 int bits = x.bitLength();
                 if (bits <= 63) {
-                    buff.put((byte) TAG_BIG_INTEGER_SMALL);
-                    DataUtils.writeVarLong(buff, x.longValue());
+                    buff.put((byte) TAG_BIG_INTEGER_SMALL).putVarLong(
+                            x.longValue());
                 } else {
-                    buff.put((byte) TYPE_BIG_INTEGER);
                     byte[] bytes = x.toByteArray();
-                    DataUtils.writeVarInt(buff, bytes.length);
-                    buff = DataUtils.ensureCapacity(buff, bytes.length);
-                    buff.put(bytes);
+                    buff.put((byte) TYPE_BIG_INTEGER).putVarInt(bytes.length)
+                            .put(bytes);
                 }
             }
-            return buff;
         }
 
         @Override
@@ -1003,9 +1028,10 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!isBigDecimal(obj)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             BigDecimal x = (BigDecimal) obj;
             if (BigDecimal.ZERO.equals(x)) {
@@ -1020,20 +1046,16 @@ public class ObjectDataType implements DataType {
                     if (scale == 0) {
                         buff.put((byte) TAG_BIG_DECIMAL_SMALL);
                     } else {
-                        buff.put((byte) TAG_BIG_DECIMAL_SMALL_SCALED);
-                        DataUtils.writeVarInt(buff, scale);
+                        buff.put((byte) TAG_BIG_DECIMAL_SMALL_SCALED)
+                                .putVarInt(scale);
                     }
-                    DataUtils.writeVarLong(buff, b.longValue());
+                    buff.putVarLong(b.longValue());
                 } else {
-                    buff.put((byte) TYPE_BIG_DECIMAL);
-                    DataUtils.writeVarInt(buff, scale);
                     byte[] bytes = b.toByteArray();
-                    DataUtils.writeVarInt(buff, bytes.length);
-                    buff = DataUtils.ensureCapacity(buff, bytes.length);
-                    buff.put(bytes);
+                    buff.put((byte) TYPE_BIG_DECIMAL).putVarInt(scale)
+                            .putVarInt(bytes.length).put(bytes);
                 }
             }
-            return buff;
         }
 
         @Override
@@ -1085,19 +1107,19 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof String)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             String s = (String) obj;
             int len = s.length();
             if (len <= 15) {
                 buff.put((byte) (TAG_STRING_0_15 + len));
             } else {
-                buff.put((byte) TYPE_STRING);
-                DataUtils.writeVarInt(buff, len);
+                buff.put((byte) TYPE_STRING).putVarInt(len);
             }
-            return DataUtils.writeStringData(buff, s, len);
+            buff.putStringData(s, len);
         }
 
         @Override
@@ -1138,15 +1160,15 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!(obj instanceof UUID)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             buff.put((byte) TYPE_UUID);
             UUID a = (UUID) obj;
             buff.putLong(a.getMostSignificantBits());
             buff.putLong(a.getLeastSignificantBits());
-            return buff;
         }
 
         @Override
@@ -1182,14 +1204,14 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!isDate(obj)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             buff.put((byte) TYPE_DATE);
             Date a = (Date) obj;
             buff.putLong(a.getTime());
-            return buff;
         }
 
         @Override
@@ -1282,28 +1304,23 @@ public class ObjectDataType implements DataType {
                 for (int i = 0; i < len; i++) {
                     int x;
                     if (type == boolean.class) {
-                        x = Integer.signum(
-                                (((boolean[]) aObj)[i] ? 1 : 0) -
-                                (((boolean[]) bObj)[i] ? 1 : 0));
+                        x = Integer.signum((((boolean[]) aObj)[i] ? 1 : 0)
+                                - (((boolean[]) bObj)[i] ? 1 : 0));
                     } else if (type == char.class) {
-                        x = Integer.signum(
-                                (((char[]) aObj)[i]) -
-                                (((char[]) bObj)[i]));
+                        x = Integer.signum((((char[]) aObj)[i])
+                                - (((char[]) bObj)[i]));
                     } else if (type == short.class) {
-                        x = Integer.signum(
-                                (((short[]) aObj)[i]) -
-                                (((short[]) bObj)[i]));
+                        x = Integer.signum((((short[]) aObj)[i])
+                                - (((short[]) bObj)[i]));
                     } else if (type == int.class) {
                         int a = ((int[]) aObj)[i];
                         int b = ((int[]) bObj)[i];
                         x = a == b ? 0 : a < b ? -1 : 1;
                     } else if (type == float.class) {
-                        x = Float.compare(
-                                ((float[]) aObj)[i],
+                        x = Float.compare(((float[]) aObj)[i],
                                 ((float[]) bObj)[i]);
                     } else if (type == double.class) {
-                        x = Double.compare(
-                                ((double[]) aObj)[i],
+                        x = Double.compare(((double[]) aObj)[i],
                                 ((double[]) bObj)[i]);
                     } else {
                         long a = ((long[]) aObj)[i];
@@ -1328,9 +1345,10 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             if (!isArray(obj)) {
-                return super.write(buff, obj);
+                super.write(buff, obj);
+                return;
             }
             Class<?> type = obj.getClass().getComponentType();
             Integer classId = getCommonClassId(type);
@@ -1342,19 +1360,16 @@ public class ObjectDataType implements DataType {
                         if (len <= 15) {
                             buff.put((byte) (TAG_BYTE_ARRAY_0_15 + len));
                         } else {
-                            buff.put((byte) TYPE_ARRAY);
-                            buff.put((byte) classId.intValue());
-                            DataUtils.writeVarInt(buff,  len);
+                            buff.put((byte) TYPE_ARRAY)
+                                    .put((byte) classId.intValue())
+                                    .putVarInt(len);
                         }
-                        buff = DataUtils.ensureCapacity(buff, data.length);
                         buff.put(data);
-                        return buff;
+                        return;
                     }
-                    buff.put((byte) TYPE_ARRAY);
-                    buff.put((byte) classId.intValue());
                     int len = Array.getLength(obj);
-                    DataUtils.writeVarInt(buff, len);
-                    buff = DataUtils.ensureCapacity(buff, 8 * len);
+                    buff.put((byte) TYPE_ARRAY).put((byte) classId.intValue())
+                            .putVarInt(len);
                     for (int i = 0; i < len; i++) {
                         if (type == boolean.class) {
                             buff.put((byte) (((boolean[]) obj)[i] ? 1 : 0));
@@ -1372,23 +1387,20 @@ public class ObjectDataType implements DataType {
                             buff.putLong(((long[]) obj)[i]);
                         }
                     }
-                    return buff;
+                    return;
                 }
-                buff.put((byte) TYPE_ARRAY);
-                buff.put((byte) classId.intValue());
+                buff.put((byte) TYPE_ARRAY).put((byte) classId.intValue());
             } else {
-                buff.put((byte) TYPE_ARRAY);
-                buff.put((byte) -1);
+                buff.put((byte) TYPE_ARRAY).put((byte) -1);
                 String c = type.getName();
-                buff = StringDataType.INSTANCE.write(buff, c);
+                StringDataType.INSTANCE.write(buff, c);
             }
             Object[] array = (Object[]) obj;
             int len = array.length;
-            DataUtils.writeVarInt(buff,  len);
+            buff.putVarInt(len);
             for (Object x : array) {
-                buff = elementType.write(buff, x);
+                elementType.write(buff, x);
             }
-            return buff;
         }
 
         @Override
@@ -1410,8 +1422,7 @@ public class ObjectDataType implements DataType {
                 } catch (Exception e) {
                     throw DataUtils.newIllegalStateException(
                             DataUtils.ERROR_SERIALIZATION,
-                            "Could not get class {0}",
-                            componentType, e);
+                            "Could not get class {0}", componentType, e);
                 }
             } else {
                 clazz = COMMON_CLASSES[ct];
@@ -1422,8 +1433,8 @@ public class ObjectDataType implements DataType {
             } catch (Exception e) {
                 throw DataUtils.newIllegalStateException(
                         DataUtils.ERROR_SERIALIZATION,
-                        "Could not create array of type {0} length {1}",
-                        clazz, len, e);
+                        "Could not create array of type {0} length {1}", clazz,
+                        len, e);
             }
             if (clazz.isPrimitive()) {
                 for (int i = 0; i < len; i++) {
@@ -1503,17 +1514,15 @@ public class ObjectDataType implements DataType {
         }
 
         @Override
-        public ByteBuffer write(ByteBuffer buff, Object obj) {
+        public void write(WriteBuffer buff, Object obj) {
             DataType t = getType(obj);
             if (t != this) {
-                return t.write(buff, obj);
+                t.write(buff, obj);
+                return;
             }
-            buff.put((byte) TYPE_SERIALIZED_OBJECT);
             byte[] data = serialize(obj);
-            DataUtils.writeVarInt(buff, data.length);
-            buff = DataUtils.ensureCapacity(buff, data.length);
-            buff.put(data);
-            return buff;
+            buff.put((byte) TYPE_SERIALIZED_OBJECT).putVarInt(data.length)
+                    .put(data);
         }
 
         @Override

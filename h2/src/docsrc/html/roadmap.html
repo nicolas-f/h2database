@@ -22,7 +22,7 @@ Of course, patches are always welcome, but are not always applied as is.
 See also <a href="build.html#providing_patches">Providing Patches</a>.
 </p>
 
-<h2>Version 1.4.x: Planned Changes</h2>
+<h2>Version 1.5.x: Planned Changes</h2>
 <ul><li>Replace file password hash with file encryption key; validate encryption key when connecting.
 </li></ul>
 
@@ -40,6 +40,8 @@ See also <a href="build.html#providing_patches">Providing Patches</a>.
 </li><li>Sort order for byte arrays: currently x'99' is smaller than x'09', which is unexpected. Change if possible.
 </li><li>Remove support for the old-style outer join syntax using "(+)" because it is buggy.
 </li><li>Change license to MPL 2.0.
+</li><li>Not allow relative database URLs like jdbc:h2:test; instead, require using jdbc:h2:./test.
+</li><li>Document that FILE_LOCK=SERIALIZED is not supported with the MVStore mode.
 </li></ul>
 
 <h2>Priority 1</h2>
@@ -71,7 +73,6 @@ See also <a href="build.html#providing_patches">Providing Patches</a>.
 </li><li>Store all temp files in the temp directory.
 </li><li>Don't use temp files, specially not deleteOnExit (bug 4513817: File.deleteOnExit consumes memory).
     Also to allow opening client / server (remote) connections when using LOBs.
-</li><li>Sequence: add features [NO] MINVALUE, MAXVALUE, CYCLE.
 </li><li>Make DDL (Data Definition) operations transactional.
 </li><li>Deferred integrity checking (DEFERRABLE INITIALLY DEFERRED).
 </li><li>Groovy Stored Procedures: http://groovy.codehaus.org/GSQL
@@ -106,7 +107,7 @@ See also <a href="build.html#providing_patches">Providing Patches</a>.
 </li><li>Fulltext search (native): reader / tokenizer / filter.
 </li><li>Linked schema using CSV files: one schema for a directory of files; support indexes for CSV files.
 </li><li>iReport to support H2.
-</li><li>Include SMPT (mail) client (alert on cluster failure, low disk space,...).
+</li><li>Include SMTP (mail) client (alert on cluster failure, low disk space,...).
 </li><li>Option for SCRIPT to only process one or a set of schemas or tables, and append to a file.
 </li><li>JSON parser and functions.
 </li><li>Copy database: tool with config GUI and batch mode, extensible (example: compare).
@@ -121,7 +122,7 @@ See also <a href="build.html#providing_patches">Providing Patches</a>.
 </li><li>Custom class loader to reload functions on demand.
 </li><li>Test http://mysql-je.sourceforge.net/
 </li><li>H2 Console: the webclient could support more features like phpMyAdmin.
-</li><li>Support Oracle functions: TRUNC, NVL2, TO_CHAR, TO_DATE, TO_NUMBER.
+</li><li>Support Oracle functions: TO_DATE, TO_NUMBER.
 </li><li>Work on the Java to C converter.
 </li><li>The HELP information schema can be directly exposed in the Console.
 </li><li>Maybe use the 0x1234 notation for binary fields, see MS SQL Server.
@@ -132,7 +133,6 @@ See also <a href="build.html#providing_patches">Providing Patches</a>.
 </li><li>Optimize getGeneratedKey: send last identity after each execute (server).
 </li><li>Test and document UPDATE TEST SET (ID, NAME) = (SELECT ID*10, NAME || '!' FROM TEST T WHERE T.ID=TEST.ID).
 </li><li>Max memory rows / max undo log size: use block count / row size not row count.
-</li><li>Support 123L syntax as in Java; example: SELECT (2000000000*2).
 </li><li>Implement point-in-time recovery.
 </li><li>Support PL/SQL (programming language / control flow statements).
 </li><li>LIKE: improved version for larger texts (currently using naive search).
@@ -545,7 +545,6 @@ See also <a href="build.html#providing_patches">Providing Patches</a>.
     (compatibility with MySQL, PostgreSQL, HSQLDB; not Derby).
 </li><li>ARRAY data type: support Integer[] and so on in Java functions (currently only Object[] is supported).
 </li><li>MySQL compatibility: LOCK TABLES a READ, b READ - see also http://dev.mysql.com/doc/refman/5.0/en/lock-tables.html
-</li><li>Oracle compatibility: convert empty strings to null. Also convert an empty byte array to null, but not empty varray.
 </li><li>The HTML to PDF converter should use http://code.google.com/p/wkhtmltopdf/
 </li><li>Issue 303: automatically convert "X NOT IN(SELECT...)" to "NOT EXISTS(...)".
 </li><li>MySQL compatibility: update test1 t1, test2 t2 set t1.name=t2.name where t1.id=t2.id.
@@ -585,7 +584,6 @@ See also <a href="build.html#providing_patches">Providing Patches</a>.
 </li><li>Use Java 6 SQLException subclasses.
 </li><li>Issue 390: RUNSCRIPT FROM '...' CONTINUE_ON_ERROR
 </li><li>Use Java 6 exceptions: SQLDataException, SQLSyntaxErrorException, SQLTimeoutException,..
-</li><li>MySQL compatibility: support REPLACE INTO as an alias for MERGE INTO.
 </li></ul>
 
 <h2>Not Planned</h2>

@@ -77,8 +77,12 @@ ALTER SCHEMA schema RENAME TO newSchemaName
 Renames a schema."
 "Commands (DDL)","ALTER SEQUENCE","
 ALTER SEQUENCE sequenceName [ RESTART WITH long ] [ INCREMENT BY long ]
+[ MINVALUE long | NOMINVALUE | NO MINVALUE ]
+[ MAXVALUE long | NOMAXVALUE | NO MAXVALUE ]
+[ CYCLE long | NOCYCLE |  NO CYCLE ]
+[ CACHE long |  NOCACHE |  NO CACHE ]
 ","
-Changes the next value and the increment of a sequence."
+Changes the parameters of a sequence."
 "Commands (DDL)","ALTER TABLE ADD","
 ALTER TABLE tableName ADD [ COLUMN ]
 { [ IF NOT EXISTS ] columnDefinition [ { BEFORE | AFTER } columnName ]
@@ -151,7 +155,7 @@ CREATE AGGREGATE [ IF NOT EXISTS ] newAggregateName FOR className
 ","
 Creates a new user-defined aggregate function."
 "Commands (DDL)","CREATE ALIAS","
-CREATE ALIAS [ IF NOT EXISTS ] newFunctionAliasName [ DETERMINISTIC ]
+CREATE ALIAS [ IF NOT EXISTS ] newFunctionAliasName [ DETERMINISTIC ] [ NOBUFFER ]
 { FOR classAndMethodName | AS sourceCodeString }
 ","
 Creates a new function alias."
@@ -188,7 +192,11 @@ CREATE SCHEMA [ IF NOT EXISTS ] name [ AUTHORIZATION ownerUserName ]
 Creates a new schema."
 "Commands (DDL)","CREATE SEQUENCE","
 CREATE SEQUENCE [ IF NOT EXISTS ] newSequenceName [ START WITH long ]
-[ INCREMENT BY long ] [ CACHE long ]
+[ INCREMENT BY long ]
+[ MINVALUE long | NOMINVALUE | NO MINVALUE ]
+[ MAXVALUE long | NOMAXVALUE | NO MAXVALUE ]
+[ CYCLE long | NOCYCLE |  NO CYCLE ]
+[ CACHE long |  NOCACHE |  NO CACHE ]
 ","
 Creates a new sequence."
 "Commands (DDL)","CREATE TABLE","
@@ -294,6 +302,10 @@ GRANT { SELECT | INSERT | UPDATE | DELETE | ALL } [,...] ON
 tableName [,...] TO { PUBLIC | userName | roleName }
 ","
 Grants rights for a table to a user or role."
+"Commands (Other)","GRANT ALTER ANY SCHEMA","
+GRANT ALTER ANY SCHEMA TO userName
+","
+Grant schema altering rights to a user."
 "Commands (Other)","GRANT ROLE","
 GRANT roleName TO { PUBLIC | userName | roleName }
 ","
@@ -1171,6 +1183,10 @@ Returns the XML declaration."
 XMLTEXT(valueString [, escapeNewlineBoolean])
 ","
 Creates an XML text element."
+"Functions (String)","TO_CHAR","
+TO_CHAR(value [, formatString[, nlsParamString]])
+","
+Oracle-compatible TO_CHAR function that can format a timestamp, a number, or text."
 "Functions (Time and Date)","CURRENT_DATE","
 { CURRENT_DATE [ () ] | CURDATE() | SYSDATE | TODAY }
 ","

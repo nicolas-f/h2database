@@ -16,6 +16,7 @@ import java.io.Writer;
 import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.Connection;
+import java.sql.NClob;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -23,6 +24,7 @@ import java.util.Random;
 import org.h2.constant.ErrorCode;
 import org.h2.jdbc.JdbcConnection;
 import org.h2.test.TestBase;
+import org.h2.util.IOUtils;
 
 /**
  * Test the Blob, Clob, and NClob implementations.
@@ -38,13 +40,13 @@ public class TestLobApi extends TestBase {
      * @param a ignored
      */
     public static void main(String... a) throws Exception {
-        // System.setProperty("h2.lobInDatabase", "true");
         TestBase.createCaller().init().test();
     }
 
     @Override
     public void test() throws Exception {
         deleteDb("lob");
+        testUnsupportedOperations();
         testLobStaysOpenUntilCommitted();
         testInputStreamThrowsException(true);
         testInputStreamThrowsException(false);
@@ -61,6 +63,41 @@ public class TestLobApi extends TestBase {
         testClob(1);
         testClob(100);
         testClob(100000);
+        stat.execute("drop table test");
+        conn.close();
+    }
+
+    private void testUnsupportedOperations() throws Exception {
+        Connection conn = getConnection("lob");
+        stat = conn.createStatement();
+        stat.execute("create table test(id int, c clob, b blob)");
+        stat.execute("insert into test values(1, 'x', x'00')");
+        ResultSet rs = stat.executeQuery("select * from test order by id");
+        rs.next();
+        Clob clob = rs.getClob(2);
+        byte[] data = IOUtils.readBytesAndClose(clob.getAsciiStream(), -1);
+        assertEquals("x", new String(data, "UTF-8"));
+        assertTrue(clob.toString().endsWith("'x'"));
+        clob.free();
+        assertTrue(clob.toString().endsWith("null"));
+
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, clob).truncate(0);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, clob).setAsciiStream(1);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, clob).setString(1, "", 0, 1);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, clob).position("", 0);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, clob).position((Clob) null, 0);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, clob).getCharacterStream(1, 1);
+
+        Blob blob = rs.getBlob(3);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, blob).truncate(0);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, blob).setBytes(1, new byte[0], 0, 0);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, blob).position(new byte[1], 0);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, blob).position((Blob) null, 0);
+        assertThrows(ErrorCode.FEATURE_NOT_SUPPORTED_1, blob).getBinaryStream(1, 1);
+        assertTrue(blob.toString().endsWith("X'00'"));
+        blob.free();
+        assertTrue(blob.toString().endsWith("null"));
+
         stat.execute("drop table test");
         conn.close();
     }
@@ -97,7 +134,9 @@ public class TestLobApi extends TestBase {
         Clob c2 = rs.getClob(2);
         Blob b2 = rs.getBlob(3);
         assertFalse(rs.next());
+        // now close
         rs.close();
+        // but the LOBs must stay open
         assertEquals(0, c1.length());
         assertEquals(0, b1.length());
         assertEquals(chars.length, c2.length());
@@ -179,15 +218,26 @@ public class TestLobApi extends TestBase {
         out.write(data, 0, data.length);
         out.close();
         stat.execute("delete from test");
+
         PreparedStatement prep = conn.prepareStatement("insert into test values(?, ?)");
         prep.setInt(1, 1);
         prep.setBlob(2, b);
         prep.execute();
+
         prep.setInt(1, 2);
         b = conn.createBlob();
         b.setBytes(1, data);
         prep.setBlob(2, b);
         prep.execute();
+
+        prep.setInt(1, 3);
+        prep.setBlob(2, new ByteArrayInputStream(data));
+        prep.execute();
+
+        prep.setInt(1, 4);
+        prep.setBlob(2, new ByteArrayInputStream(data), -1);
+        prep.execute();
+
         ResultSet rs;
         rs = stat.executeQuery("select * from test");
         rs.next();
@@ -201,6 +251,10 @@ public class TestLobApi extends TestBase {
         assertEquals(length, b2.length());
         bytes2 = b2.getBytes(1, length);
         assertEquals(bytes, bytes2);
+        while (rs.next()) {
+            bytes2 = rs.getBytes(2);
+            assertEquals(bytes, bytes2);
+        }
     }
 
     private void testClob(int length) throws Exception {
@@ -225,14 +279,44 @@ public class TestLobApi extends TestBase {
         out.close();
         stat.execute("delete from test");
         PreparedStatement prep = conn.prepareStatement("insert into test values(?, ?)");
+
         prep.setInt(1, 1);
         prep.setClob(2, c);
         prep.execute();
+
         c = conn.createClob();
         c.setString(1, new String(data));
         prep.setInt(1, 2);
         prep.setClob(2, c);
         prep.execute();
+
+        prep.setInt(1, 3);
+        prep.setCharacterStream(2, new StringReader(new String(data)));
+        prep.execute();
+
+        prep.setInt(1, 4);
+        prep.setCharacterStream(2, new StringReader(new String(data)), -1);
+        prep.execute();
+
+        NClob nc;
+        nc = conn.createNClob();
+        nc.setString(1, new String(data));
+        prep.setInt(1, 5);
+        prep.setNClob(2, nc);
+        prep.execute();
+
+        prep.setInt(1, 5);
+        prep.setNClob(2, new StringReader(new String(data)));
+        prep.execute();
+
+        prep.setInt(1, 6);
+        prep.setNClob(2, new StringReader(new String(data)), -1);
+        prep.execute();
+
+        prep.setInt(1, 7);
+        prep.setNString(2, new String(data));
+        prep.execute();
+
         ResultSet rs;
         rs = stat.executeQuery("select * from test");
         rs.next();
@@ -240,11 +324,12 @@ public class TestLobApi extends TestBase {
         assertEquals(length, c2.length());
         String s = c.getSubString(1, length);
         String s2 = c2.getSubString(1, length);
-        rs.next();
-        c2 = rs.getClob(2);
-        assertEquals(length, c2.length());
-        s2 = c2.getSubString(1, length);
-        assertEquals(s, s2);
+        while (rs.next()) {
+            c2 = rs.getClob(2);
+            assertEquals(length, c2.length());
+            s2 = c2.getSubString(1, length);
+            assertEquals(s, s2);
+        }
     }
 
 }

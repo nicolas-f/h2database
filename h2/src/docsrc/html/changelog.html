@@ -18,7 +18,77 @@ Change Log
 <h1>Change Log</h1>
 
 <h2>Next Version (unreleased)</h2>
-<ul><li>Improved error message for some syntax errors.
+<ul><li>The Polish translation was completed and corrected by Wojtek Jurczyk. Thanks a lot!
+</li><li>Issue 545: Unnecessary duplicate code was removed. 
+</li><li>The profiler tool can now process files with full thread dumps.
+</li><li>MVStore: the file format was changed slightly.
+</li><li>MVStore mode: the CLOB and BLOB storage was re-implemented and is
+    now much faster than with the PageStore (which is still the default storage).
+</li><li>MVStore mode: creating indexes is now much faster
+    (in many cases faster than with the default PageStore).
+</li><li>Various bugs in the MVStore storage and have been fixed,
+    including a bug in the R-tree implementation.
+    The database could get corrupt if there were transient IO exceptions while storing.
+</li><li>The method org.h2.expression.Function.getCost could throw a NullPointException.
+</li><li>Storing LOBs in separate files (outside of the main database file)
+    is no longer supported for new databases.
+</li><li>Lucene 2 is no longer supported.
+</li><li>Fix bug in calculating default MIN and MAX values for SEQUENCE.
+</li><li>Fix bug in performing IN queries with multiple values when IGNORECASE=TRUE
+</li></ul>
+
+<h2>Version 1.3.175 (2014-01-18)</h2>
+<ul><li>EXPLAIN was incorrect for queries with "ANY" or "SOME" conditions.
+</li><li>CallableStatement with "out" parameters: running the same statement twice
+    could result in an exception ("parameter not set").
+</li><li>Union queries: duplicate rows could be returned if the sub-queries contained "order by".
+</li><li>The GEOMETRY data type now works for user defined functions that return a result set.
+</li><li>PostgreSQL compatibility: the PgServer was not working properly when the setting
+    database_to_upper was set to false.
+</li><li>JdbcDataSource: the methods setUrl and getUrl where added as aliases for setURL and getURL.
+    This should solve problems with the HikariCP (Hikari connection pool).
+</li><li>Issue 537: H2 Console: when loading the schema, incorrect JDBC calls where issued, which caused
+    the exception "Column PRECISION not found".
+</li><li>Improved Geometry processing (issue 535).
+</li><li>The collation can now be set in the database URL, even if there are data tables,
+    if the collection is the same as the current collation.
+</li><li>Improved Oracle compatibility for CASE WHEN and DECODE.
+</li><li>The statement "drop all objects" did not work if a table depends on a view via a constraint.
+</li><li>Subqueries or views with "order by" an alias expression could not be executed
+    due to a regression introduced in version 1.3.174.
+</li><li>Issue 73: MySQL compatibility: support REPLACE, patch by Cemo Koc.
+</li><li>The spatial index now works in MVCC mode when using the MVStore storage.
+</li><li>MVStore: concurrency problems have been fixed.
+    The API has been simplified.
+</li><li>Improve error message when dropping an index that belongs to a constraint,
+    specify constraint in error message.
+</li><li>Issue 518: java.sql.Connection.commit() freezes after LOB modification with EXCLUSIVE connection
+</li><li>Issue 517: Create or replace view statement has no effect on the others already existing JDBC connection
+</li><li>Support 123L syntax as in Java; example: SELECT (2000000000L*2).
+</li><li>Issue 520: Add support for sequence max value, min value and cycle, patch by Daniel Gredler.
+</li><li>Issue 521: ScriptReader should implement Closeable
+</li><li>Issue 524: RunScript.execute does not close its Statement, patch from Gaul.
+</li><li>Add support for DB2 "WITH UR" clause, patch from litailang
+</li><li>Added support for ON DUPLICATE KEY UPDATE like MySQL with the values() function to update with the value that
+    was to be inserted. Patch from Jean-Francois Noel.
+</li><li>Issue 522: Treat empty strings like NULL in Oracle compatibility mode, patch by Daniel Gredler.
+</li><li>Issue 527: Oracle compatibility mode: incorrect scale behavior, patch by Daniel Gredler.
+</li><li>Slightly reduce the memory cost of View metadata.
+</li><li>Extend support of "GRANT ALTER ANY SCHEMA TO &lt;user&gt;" to allow grantee ability to manipulate tables
+</li><li>Issue 532: Javadoc for ErrorCode.ROLES_AND_RIGHT_CANNOT_BE_MIXED looks wrong
+</li><li>Issue 528: Add Oracle-compatible TO_CHAR function, patch by Daniel Gredler.
+</li><li>Issue 534: CREATE ALIAS NOCACHE, Patch by Nicolas Fortin
+</li><li>Fix an issue with storing Unicode surrogate pairs in CLOB columns.
+</li><li>H2 console: add SHIFT+ENTER "run selected" functionality
+</li><li>Fix bug in DB2 syntax "select * from test with ur", patch from litailang
+</li><li>Fix bug in DROP ALL OBJECTS when dealing with inter-schema dependencies.
+</li></ul>
+
+<h2>Version 1.3.174 (2013-10-19)</h2>
+<ul><li>LIRS cache: bugfix for caches that only contain non-resident entries.
+</li><li>For in-memory databases, queries with a "group by" column that
+    is also a hash index threw a RuntimeException.
+</li><li>Improved error message for some syntax errors.
 </li><li>File system abstraction: if used directly, some file systems did not work correctly
     with spliced byte buffers (the database engine doesn't use those).
 </li><li>To use the MVStore storage engine (which is still work in progress), append
@@ -57,7 +127,7 @@ Change Log
     in the Session query cache being invalidated.
 </li><li>New feature from Davide Cavestro - allow using custom Java object serialization
     engines on a per-DB basis.
-</li><li>When running the Recover tool on very large (>6G) databases, some statistics were reported with
+</li><li>When running the Recover tool on very large (&gt;6G) databases, some statistics were reported with
     negative numbers.
 </li><li>Add a CONTAINS_UNCOMMITTED column to the SESSIONS metadata table, to allow detecting when rogue
     sessions are creating large transactions.
@@ -79,14 +149,18 @@ Change Log
 </li><li>Fix to org.h2.util.ScriptReader when handling unclosed block comments.
 </li><li>Make org.h2.util.ScriptReader throw a better exception when handling broken scripts which generate
     extremely large statements.
-</li><li>Fix bug with ALLOW_LITERALS=NONE, where the periodic analyze table on insert would throw an exception.
+</li><li>Fix bug with ALLOW_LITERALS=NONE,
+    where the periodic analyze table on insert would throw an exception.
+    A similar problem was fixed in the Console tool.
 </li><li>Issue 510: Make org.h2.bnf public for consumption by external projects, patch by Nicolas Fortin
-</li><li>Issue 509:	Important fix on ValueGeometry, patch by Nicolas Fortin (with some tweaking)
+</li><li>Issue 509: Important fix on ValueGeometry, patch by Nicolas Fortin (with some tweaking)
     Make ValueGeometry#getDimensionCount more reliable.
     Add unit test to check for illegal ValueGeometry comparison
     Add unit test for conversion of Geometry object into Object
     Add optional export to MANIFEST.MF for JTS Geometry classes
     Validate that geometry values can be represented in WKB.
+</li><li>Issue 506: RFE: Include Thread.getName() in case of a deadlock
+</li><li>Adding support for "GRANT ALTER ANY SCHEMA TO &lt;user&gt;", patch by John Yates
 </li></ul>
 
 <h2>Version 1.3.173 (2013-07-28)</h2>
@@ -300,79 +374,6 @@ Change Log
     on the number of LOBs per result set.
 </li><li>H2 Console: HTML and XML documents can now be edited in an updatable result set.
     There is (limited) support for editing multi-line documents.
-</li></ul>
-
-<h2>Version 1.3.167 (2012-05-23)</h2>
-<ul><li>H2 Console: when editing a row, an empty varchar column was replaced with a single space.
-</li><li>Lukas Eder has updated the jOOQ documentation.
-</li><li>Some nested joins could not be executed, for example:
-    select * from (select * from (select * from a) a right join b b) c;
-</li><li>MS SQL Server compatibility: ISNULL is now an alias for IFNULL.
-</li><li>Terrence Huang has completed the translation of the H2 Console tool to Chinese. Thanks a lot!
-</li><li>Server mode: the number of CLOB / BLOB values that were cached on the server
-    is now the maximum of: 5 times the SERVER_RESULT_SET_FETCH_SIZE (which is 100 by default),
-    and SysProperties.SERVER_CACHED_OBJECTS.
-</li><li>In the trace file, the query execution time was incorrect in some cases, specially
-    for the statement SET TRACE_LEVEL_FILE 2.
-</li><li>The feature LOG_SIZE_LIMIT that was introduced in version 1.3.165 did not always work
-    correctly (specially with regards to multithreading) and has been removed.
-    The message "Transaction log could not be truncated" is still written to the .trace.db file
-    if required.
-</li><li>Then reading from a resource using the prefix "classpath:", the ContextClassLoader
-    is now used if the resource can't be read otherwise.
-</li><li>DatabaseEventListener now calls setProgress whenever a statement starts and ends.
-</li><li>DatabaseEventListener now calls setProgress periodically while a statement is running.
-</li><li>The table INFORMATION_SCHEMA.FUNCTION_ALIASES now includes a column TYPE_NAME.
-</li><li>Issue 378: when using views, the wrong values were bound to a parameter in some cases.
-</li><li>Terrence Huang has translated the error messages to Chinese. Thanks a lot!
-</li><li>TRUNC was added as an alias for TRUNCATE.
-</li><li>Small optimisation for accessing result values by column name.
-</li><li>Fix for bug in Statement.getMoreResults(int)
-</li><li>The SCRIPT statements now supports filtering by schema and table. Thanks a lot to Jacob Qvortrup for providing the patch!
-</li></ul>
-
-<h2>Version 1.3.166 (2012-04-08)</h2>
-<ul><li>Indexes on column that are larger than half the page size (wide indexes)
-    could sometimes get corrupt, resulting in an ArrayIndexOutOfBoundsException in PageBtree.getRow
-    or "Row not found" in PageBtreeLeaf. Also, such indexes used too much disk space.
-</li><li>Server mode: when retrieving more than 64 rows each containing a CLOB or BLOB,
-    the error message "The object is already closed" was thrown.
-</li><li>ConvertTraceFile: the time in the trace file is now parsed as a long.
-</li><li>Invalid connection settings are now detected.
-</li><li>Issue 387: WHERE condition getting pushed into sub-query with LIMIT.
-</li></ul>
-
-<h2>Version 1.3.165 (2012-03-18)</h2>
-<ul><li>Better string representation for decimal values (for example 0.00000000 instead of 0E-26).
-</li><li>Prepared statements could only be re-used if the same data types were used
-    the second time they were executed.
-</li><li>In error messages about referential constraint violation, the values are now included.
-</li><li>SCRIPT and RUNSCRIPT: the password can now be set using a prepared statement.
-    Previously, it was required to be a literal in the SQL statement.
-</li><li>MySQL compatibility: SUBSTR with a negative start index now works like MySQL.
-</li><li>When enabling autocommit, the transaction is now committed (as required by the JDBC API).
-</li><li>The shell script <code>h2.sh</code> did not work with spaces in the path.
-    It also works now with quoted spaces in the argument list.
-    Thanks a lot to Shimizu Fumiyuki for the patch!
-</li><li>If the transaction log could not be truncated because of an uncommitted transaction,
-    now "Transaction log could not be truncated" is written to the .trace.db file.
-    Before, the database file was growing and it was hard to find out what the root cause was.
-    To avoid the database file from growing, a new feature to automatically rollback the oldest
-    transaction is available now. To enable it, append ;LOG_SIZE_LIMIT=32 to the database URL
-    (in that case, the oldest session is rolled back if the transaction log is 32 MB).
-</li><li>ALTER TABLE ADD can now add more than one column at a time.
-</li><li>Issue 380: ALTER TABLE ADD FOREIGN KEY with an explicit index didn't verify
-    the index can be used, which would lead to a NullPointerException later on.
-</li><li>Issue 384: the wrong kind of exception (NullPointerException) was thrown in a UNION query
-    with an incorrect ORDER BY expression.
-</li><li>Issue 362: support LIMIT in UPDATE statements.
-</li><li>Browser: if no default browser is set, Google Chrome is now used if available.
-    If not available, then Konqueror, Netscape, or Opera is used if available (as before).
-</li><li>CSV tool: new feature to disable writing the column header
-    (option writeColumnHeader).
-</li><li>CSV tool: new feature to preserve the case sensitivity of column names
-    (option caseSensitiveColumnNames).
-</li><li>PostgreSQL compatibility: LOG(x) is base 10 in the PostgreSQL mode.
 </li></ul>
 
 <!-- [close] { --></div></td></tr></table><!-- } --><!-- analytics --></body></html>

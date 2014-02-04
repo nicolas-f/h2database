@@ -19,7 +19,7 @@ import org.h2.constant.ErrorCode;
 import org.h2.constant.SysProperties;
 import org.h2.message.DbException;
 import org.h2.security.SHA256;
-import org.h2.store.fs.FilePathCrypt;
+import org.h2.store.fs.FilePathEncrypt;
 import org.h2.store.fs.FilePathRec;
 import org.h2.store.fs.FileUtils;
 import org.h2.util.New;
@@ -314,7 +314,7 @@ public class ConnectionInfo implements Cloneable {
             System.arraycopy(password, 0, filePassword, 0, space);
             Arrays.fill(password, (char) 0);
             password = np;
-            fileEncryptionKey = FilePathCrypt.getPasswordBytes(filePassword);
+            fileEncryptionKey = FilePathEncrypt.getPasswordBytes(filePassword);
             filePasswordHash = hashPassword(passwordHash, "file", filePassword);
         }
         userPasswordHash = hashPassword(passwordHash, user, password);
@@ -385,7 +385,13 @@ public class ConnectionInfo implements Cloneable {
         if (persistent) {
             if (nameNormalized == null) {
                 String suffix = Constants.SUFFIX_PAGE_FILE;
-                String n = FileUtils.toRealPath(name + suffix);
+                String n;
+                if (FileUtils.exists(name + suffix)) {
+                    n = FileUtils.toRealPath(name + suffix);
+                } else {
+                    suffix = Constants.SUFFIX_MV_FILE;
+                    n = FileUtils.toRealPath(name + suffix);
+                }
                 String fileName = FileUtils.getName(n);
                 if (fileName.length() < suffix.length() + 1) {
                     throw DbException.get(ErrorCode.INVALID_DATABASE_NAME_1, name);

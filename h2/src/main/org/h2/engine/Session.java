@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Random;
 
 import org.h2.command.Command;
@@ -34,7 +33,6 @@ import org.h2.result.Row;
 import org.h2.schema.Schema;
 import org.h2.store.DataHandler;
 import org.h2.store.InDoubtTransaction;
-import org.h2.store.LobStorageBackend;
 import org.h2.store.LobStorageFrontend;
 import org.h2.table.Table;
 import org.h2.util.New;
@@ -106,6 +104,7 @@ public class Session extends SessionWithState {
     private int queryTimeout;
     private boolean commitOrRollbackDisabled;
     private Table waitForLock;
+    private Thread waitForLockThread;
     private int modificationId;
     private int objectId;
     private final int queryCacheSize;
@@ -587,11 +586,7 @@ public class Session extends SessionWithState {
         }
         if (transaction != null) {
             long savepointId = savepoint == null ? 0 : savepoint.transactionSavepoint;
-            List<MVTable> tables = database.getMvStore().getTables();
-            HashMap<String, MVTable> tableMap = New.hashMap();
-            for (MVTable t : tables) {
-                tableMap.put(t.getMapName(), t);
-            }
+            HashMap<String, MVTable> tableMap = database.getMvStore().getTables();
             Iterator<Change> it = transaction.getChanges(savepointId);
             while (it.hasNext()) {
                 Change c = it.next();
@@ -1076,10 +1071,6 @@ public class Session extends SessionWithState {
         return database;
     }
 
-    public LobStorageBackend getLobStorageBackend() {
-        return database.getLobStorage();
-    }
-
     /**
      * Remember that the given LOB value must be un-linked (disconnected from
      * the table) at commit.
@@ -1230,6 +1221,11 @@ public class Session extends SessionWithState {
      * method returns as soon as the exclusive mode has been disabled.
      */
     public void waitIfExclusiveModeEnabled() {
+        // Even in exclusive mode, we have to let the LOB session proceed, or we will
+        // get deadlocks.
+        if (database.getLobSession() == this) {
+            return;
+        }
         while (true) {
             Session exclusive = database.getExclusiveSession();
             if (exclusive == null || exclusive == this) {
@@ -1292,12 +1288,23 @@ public class Session extends SessionWithState {
         return queryTimeout;
     }
 
-    public void setWaitForLock(Table table) {
-        this.waitForLock = table;
+    /**
+     * Set the table this session is waiting for, and the thread that is waiting.
+     *
+     * @param waitForLock the table
+     * @param waitForLockThread the current thread (the one that is waiting)
+     */
+    public void setWaitForLock(Table waitForLock, Thread waitForLockThread) {
+        this.waitForLock = waitForLock;
+        this.waitForLockThread = waitForLockThread;
     }
 
     public Table getWaitForLock() {
         return waitForLock;
+    }
+
+    public Thread getWaitForLockThread() {
+        return waitForLockThread;
     }
 
     public int getModificationId() {

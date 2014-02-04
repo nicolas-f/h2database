@@ -23,28 +23,30 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+
 import org.h2.constant.ErrorCode;
 import org.h2.constant.SysProperties;
 import org.h2.jdbc.JdbcConnection;
 import org.h2.message.DbException;
-import org.h2.store.FileLister;
 import org.h2.store.fs.FileUtils;
 import org.h2.test.TestBase;
-import org.h2.tools.DeleteDbFiles;
 import org.h2.util.IOUtils;
 import org.h2.util.JdbcUtils;
 import org.h2.util.StringUtils;
 import org.h2.util.Task;
 import org.h2.util.Utils;
-import org.h2.value.ValueLob;
 
 /**
  * Tests LOB and CLOB data types.
  */
 public class TestLob extends TestBase {
+
+    private static final String MORE_THAN_128_CHARS =
+            "12345678901234567890123456789012345678901234567890" +
+            "12345678901234567890123456789012345678901234567890" +
+            "12345678901234567890123456789";
 
     /**
      * Run just this test.
@@ -59,6 +61,8 @@ public class TestLob extends TestBase {
 
     @Override
     public void test() throws Exception {
+        testClobWithRandomUnicodeChars();
+        testCommitOnExclusiveConnection();
         testReadManyLobs();
         testLobSkip();
         testLobSkipPastEnd();
@@ -74,11 +78,9 @@ public class TestLob extends TestBase {
         testUniqueIndex();
         testConvert();
         testCreateAsSelect();
-        testDropAllObjects();
         testDelete();
         testTempFilesDeleted(true);
         testTempFilesDeleted(false);
-        testAddLobRestart();
         testLobServerMemory();
         testUpdatingLobRow();
         if (config.memory) {
@@ -86,8 +88,6 @@ public class TestLob extends TestBase {
         }
         testLobCleanupSessionTemporaries();
         testLobUpdateMany();
-        testLobDeleteTemp();
-        testLobDelete();
         testLobVariable();
         testLobDrop();
         testLobNoClose();
@@ -219,12 +219,14 @@ public class TestLob extends TestBase {
             prep.execute();
         }
         if (upgraded) {
-            if (config.memory) {
-                stat.execute("update information_schema.lob_map set pos=null");
-            } else {
-                stat.execute("alter table information_schema.lob_map drop column pos");
-                conn.close();
-                conn = getConnection("lob");
+            if (!config.mvStore) {
+                if (config.memory) {
+                    stat.execute("update information_schema.lob_map set pos=null");
+                } else {
+                    stat.execute("alter table information_schema.lob_map drop column pos");
+                    conn.close();
+                    conn = getConnection("lob");
+                }
             }
         }
         prep = conn.prepareStatement("select * from test where id = ?");
@@ -526,39 +528,8 @@ public class TestLob extends TestBase {
         conn.close();
     }
 
-    private void testDropAllObjects() throws Exception {
-        if (SysProperties.LOB_IN_DATABASE || config.memory) {
-            return;
-        }
-        deleteDb("lob");
-        Connection conn;
-        Statement stat;
-        conn = getConnection("lob");
-        stat = conn.createStatement();
-
-        stat.execute("create table test(id int primary key, name clob)");
-        stat.execute("insert into test values(1, space(10000))");
-        assertEquals(1, FileUtils.newDirectoryStream(getBaseDir() + "/lob.lobs.db").size());
-        stat.execute("drop table test");
-        assertEquals(0, FileUtils.newDirectoryStream(getBaseDir() + "/lob.lobs.db").size());
-
-        stat.execute("create table test(id int primary key, name clob)");
-        stat.execute("insert into test values(1, space(10000))");
-        assertEquals(1, FileUtils.newDirectoryStream(getBaseDir() + "/lob.lobs.db").size());
-        stat.execute("drop all objects");
-        assertEquals(0, FileUtils.newDirectoryStream(getBaseDir() + "/lob.lobs.db").size());
-
-        stat.execute("create table test(id int primary key, name clob)");
-        stat.execute("insert into test values(1, space(10000))");
-        assertEquals(1, FileUtils.newDirectoryStream(getBaseDir() + "/lob.lobs.db").size());
-        stat.execute("truncate table test");
-        assertEquals(0, FileUtils.newDirectoryStream(getBaseDir() + "/lob.lobs.db").size());
-
-        conn.close();
-    }
-
     private void testDelete() throws Exception {
-        if (!SysProperties.LOB_IN_DATABASE || config.memory) {
+        if (config.memory || config.mvStore) {
             return;
         }
         deleteDb("lob");
@@ -624,27 +595,6 @@ public class TestLob extends TestBase {
         assertEquals("Unexpected temp file: " + list, 0, list.size());
     }
 
-    private static void testAddLobRestart() throws SQLException {
-        DeleteDbFiles.execute("memFS:", "lob", true);
-        Connection conn = org.h2.Driver.load().connect("jdbc:h2:memFS:lob", null);
-        Statement stat = conn.createStatement();
-        stat.execute("create table test(d blob)");
-        stat.execute("set MAX_LENGTH_INPLACE_LOB 1");
-        PreparedStatement prep = conn.prepareCall("insert into test values('0000')");
-        // long start = System.currentTimeMillis();
-        for (int i = 0; i < 2000; i++) {
-            // if (i % 1000 == 0) {
-            //     long now = System.currentTimeMillis();
-            //     System.out.println(i + " " + (now - start));
-            //     start = now;
-            // }
-            prep.execute();
-            ValueLob.resetDirCounter();
-        }
-        conn.close();
-        DeleteDbFiles.execute("memFS:", "lob", true);
-    }
-
     private void testLobUpdateMany() throws SQLException {
         deleteDb("lob");
         Connection conn = getConnection("lob");
@@ -656,22 +606,8 @@ public class TestLob extends TestBase {
         conn.close();
     }
 
-    private void testLobDeleteTemp() throws SQLException {
-        if (SysProperties.LOB_IN_DATABASE) {
-            return;
-        }
-        deleteDb("lob");
-        Connection conn = getConnection("lob");
-        Statement stat = conn.createStatement();
-        stat.execute("create table test(data clob) as select space(100000) from dual");
-        assertEquals(1, FileUtils.newDirectoryStream(getBaseDir() + "/lob.lobs.db").size());
-        stat.execute("delete from test");
-        conn.close();
-        assertEquals(0, FileUtils.newDirectoryStream(getBaseDir() + "/lob.lobs.db").size());
-    }
-
     private void testLobCleanupSessionTemporaries() throws SQLException {
-        if (!SysProperties.LOB_IN_DATABASE) {
+        if (config.mvStore) {
             return;
         }
         deleteDb("lob");
@@ -707,44 +643,6 @@ public class TestLob extends TestBase {
         prep.setCharacterStream(1, reader, -1);
         prep.execute();
         conn.close();
-    }
-
-    private void testLobDelete() throws SQLException {
-        if (config.memory || SysProperties.LOB_IN_DATABASE) {
-            return;
-        }
-        deleteDb("lob");
-        Connection conn = reconnect(null);
-        Statement stat = conn.createStatement();
-        stat.execute("CREATE TABLE TEST(ID INT, DATA CLOB)");
-        stat.execute("INSERT INTO TEST SELECT X, SPACE(10000) FROM SYSTEM_RANGE(1, 10)");
-        ArrayList<String> list = FileLister.getDatabaseFiles(getBaseDir(), "lob", true);
-        stat.execute("UPDATE TEST SET DATA = SPACE(5000)");
-        collectAndWait();
-        stat.execute("CHECKPOINT");
-        ArrayList<String> list2 = FileLister.getDatabaseFiles(getBaseDir(), "lob", true);
-        if (list2.size() >= list.size() + 5) {
-            fail("Expected not many more files, got " + list2.size() + " was " + list.size());
-        }
-        stat.execute("DELETE FROM TEST");
-        collectAndWait();
-        stat.execute("CHECKPOINT");
-        ArrayList<String> list3 = FileLister.getDatabaseFiles(getBaseDir(), "lob", true);
-        if (list3.size() >= list.size()) {
-            fail("Expected less files, got " + list2.size() + " was " + list.size());
-        }
-        conn.close();
-    }
-
-    private static void collectAndWait() {
-        for (int i = 0; i < 3; i++) {
-            System.gc();
-        }
-        try {
-            Thread.sleep(50);
-        } catch (InterruptedException e) {
-            // ignore
-        }
     }
 
     private void testLobVariable() throws SQLException {
@@ -845,25 +743,28 @@ public class TestLob extends TestBase {
         int rows = 0;
         Savepoint sp = null;
         int len = getSize(100, 400);
+        // config.traceTest = true;
         for (int i = 0; i < len; i++) {
             switch (random.nextInt(10)) {
             case 0:
-                trace("insert");
+                trace("insert " + i);
                 conn.createStatement().execute(
                         "INSERT INTO TEST(DATA, DATA2) VALUES('" + i + "' || SPACE(" + spaceLen + "), '" + i + "')");
                 rows++;
                 break;
             case 1:
                 if (rows > 0) {
-                    trace("delete");
-                    conn.createStatement().execute("DELETE FROM TEST WHERE ID=" + random.nextInt(rows));
+                    int x = random.nextInt(rows);
+                    trace("delete " + x);
+                    conn.createStatement().execute("DELETE FROM TEST WHERE ID=" + x);
                 }
                 break;
             case 2:
                 if (rows > 0) {
-                    trace("update");
+                    int x = random.nextInt(rows);
+                    trace("update " + x);
                     conn.createStatement().execute(
-                            "UPDATE TEST SET DATA='x' || DATA, DATA2='x' || DATA2 WHERE ID=" + random.nextInt(rows));
+                            "UPDATE TEST SET DATA='x' || DATA, DATA2='x' || DATA2 WHERE ID=" + x);
                 }
                 break;
             case 3:
@@ -906,9 +807,10 @@ public class TestLob extends TestBase {
             }
             ResultSet rs = conn.createStatement().executeQuery("SELECT * FROM TEST");
             while (rs.next()) {
+                int id = rs.getInt("ID");
                 String d1 = rs.getString("DATA").trim();
-                String d2 = rs.getString("DATA2").trim();
-                assertEquals(d1, d2);
+                String d2 = rs.getString("DATA2");
+                assertEquals("id:" + id, d2, d1);
             }
 
         }
@@ -1119,7 +1021,7 @@ public class TestLob extends TestBase {
         time = System.currentTimeMillis() - time;
         trace("time: " + time + " compress: " + compress);
         conn.close();
-        if (!config.memory && SysProperties.LOB_IN_DATABASE) {
+        if (!config.memory) {
             long length = new File(getBaseDir() + "/lob.h2.db").length();
             trace("len: " + length + " compress: " + compress);
         }
@@ -1288,6 +1190,9 @@ public class TestLob extends TestBase {
         prep = conn.prepareStatement("INSERT INTO TEST VALUES(1, ?)");
         String s = new String(getRandomChars(10000, 1));
         byte[] data = s.getBytes("UTF-8");
+        // if we keep the string, debugging with Eclipse is not possible
+        // because Eclipse wants to display the large string and fails
+        s = "";
         prep.setBinaryStream(1, new ByteArrayInputStream(data), 0);
         prep.execute();
 
@@ -1486,4 +1391,80 @@ public class TestLob extends TestBase {
         conn.close();
     }
 
+    private void testCommitOnExclusiveConnection() throws Exception {
+        deleteDb("lob");
+        Connection conn = getConnection("lob;EXCLUSIVE=1");
+        Statement statement = conn.createStatement();
+        statement.execute("drop table if exists TEST");
+        statement.execute("create table TEST (COL INTEGER, LOB CLOB)");
+        conn.setAutoCommit(false);
+        statement.execute("insert into TEST (COL, LOB) values (1, '" + MORE_THAN_128_CHARS + "')");
+        statement.execute("update TEST set COL=2");
+        // OK
+        // statement.execute("commit");
+        // KO : should not hang
+        conn.commit();
+        conn.close();
+    }
+
+    private void testClobWithRandomUnicodeChars() throws Exception {
+        // This tests an issue we had with storing unicode surrogate pairs, which only
+        // manifested at the boundaries between blocks i.e. at 4k boundaries
+        deleteDb("lob");
+        Connection conn = getConnection("lob");
+        Statement stat = conn.createStatement();
+        stat.execute("CREATE TABLE logs(id int primary key auto_increment, message CLOB)");
+        PreparedStatement s1 = conn.prepareStatement("INSERT INTO logs (id, message) VALUES(null, ?)");
+        final Random rand = new Random(1);
+        for (int i = 1; i <= 100; i++) {
+            String data = randomUnicodeString(rand);
+            s1.setString(1, data);
+            s1.executeUpdate();
+            ResultSet rs = stat.executeQuery("SELECT id, message FROM logs ORDER BY id DESC LIMIT 1");
+            rs.next();
+            String read = rs.getString(2);
+            if (!read.equals(data)) {
+                for (int j = 0; j < read.length(); j++) {
+                    assertEquals("pos: " + j, read.charAt(j), data.charAt(j));
+                }
+            }
+            assertEquals(read, data);
+        }
+        conn.close();
+    }
+
+    private static String randomUnicodeString(Random rand) {
+        int count = 10000;
+        final char[] buffer = new char[count];
+        while (count-- != 0) {
+            char ch = (char) rand.nextInt();
+            if (ch >= 56320 && ch <= 57343) {
+                if (count == 0) {
+                    count++;
+                } else {
+                    // low surrogate, insert high surrogate after putting it
+                    // in
+                    buffer[count] = ch;
+                    count--;
+                    buffer[count] = (char) (55296 + rand.nextInt(128));
+                }
+            } else if (ch >= 55296 && ch <= 56191) {
+                if (count == 0) {
+                    count++;
+                } else {
+                    // high surrogate, insert low surrogate before putting
+                    // it in
+                    buffer[count] = (char) (56320 + rand.nextInt(128));
+                    count--;
+                    buffer[count] = ch;
+                }
+            } else if (ch >= 56192 && ch <= 56319) {
+                // private high surrogate: no clue, so skip it
+                count++;
+            } else {
+                buffer[count] = ch;
+            }
+        }
+        return new String(buffer);
+    }
 }

@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.nio.channels.FileChannel;
+import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.Iterator;
 import java.util.Map;
@@ -23,6 +24,7 @@ import org.h2.mvstore.MVStore;
 import org.h2.store.fs.FileChannelInputStream;
 import org.h2.store.fs.FileUtils;
 import org.h2.test.TestBase;
+import org.h2.util.New;
 import org.h2.util.Task;
 
 /**
@@ -43,7 +45,10 @@ public class TestConcurrent extends TestMVStore {
     public void test() throws Exception {
         FileUtils.deleteRecursive(getBaseDir(), true);
         FileUtils.createDirectories(getBaseDir());
+        FileUtils.deleteRecursive("memFS:", false);
 
+        testConcurrentFree();
+        testConcurrentStoreAndRemoveMap();
         testConcurrentStoreAndClose();
         testConcurrentOnlineBackup();
         testConcurrentMap();
@@ -52,37 +57,150 @@ public class TestConcurrent extends TestMVStore {
         testConcurrentRead();
     }
 
-    private void testConcurrentStoreAndClose() throws InterruptedException {
-        String fileName = getBaseDir() + "/testConcurrentStoreAndClose.h3";
+    private void testConcurrentFree() throws InterruptedException {
+        String fileName = "memFS:testConcurrentFree.h3";
+        for (int test = 0; test < 10; test++) {
+            FileUtils.delete(fileName);
+            final MVStore s1 = new MVStore.Builder().
+                    fileName(fileName).autoCommitDisabled().open();
+            s1.setRetentionTime(0);
+            final int count = 200;
+            for (int i = 0; i < count; i++) {
+                MVMap<Integer, Integer> m = s1.openMap("d" + i);
+                m.put(1, 1);
+                if (i % 2 == 0) {
+                    s1.commit();
+                }
+            }
+            s1.close();
+            final MVStore s = new MVStore.Builder().
+                    fileName(fileName).autoCommitDisabled().open();
+            s.setRetentionTime(0);
+            final ArrayList<MVMap<Integer, Integer>> list = New.arrayList();
+            for (int i = 0; i < count; i++) {
+                MVMap<Integer, Integer> m = s.openMap("d" + i);
+                list.add(m);
+            }
+
+            final AtomicInteger counter = new AtomicInteger();
+            Task task = new Task() {
+                @Override
+                public void call() throws Exception {
+                    while (!stop) {
+                        int x = counter.getAndIncrement();
+                        if (x >= count) {
+                            break;
+                        }
+                        MVMap<Integer, Integer> m = list.get(x);
+                        m.clear();
+                        s.removeMap(m);
+                    }
+                }
+            };
+            task.execute();
+            Thread.sleep(1);
+            while (true) {
+                int x = counter.getAndIncrement();
+                if (x >= count) {
+                    break;
+                }
+                MVMap<Integer, Integer> m = list.get(x);
+                m.clear();
+                s.removeMap(m);
+                if (x % 5 == 0) {
+                    s.commit();
+                }
+            }
+            task.get();
+            s.commit();
+
+            MVMap<String, String> meta = s.getMetaMap();
+            int chunkCount = 0;
+            for (String k : meta.keyList()) {
+                if (k.startsWith("chunk.")) {
+                    chunkCount++;
+                }
+            }
+            // the chunk metadata is not yet written
+            assertEquals(0, chunkCount);
+            s.close();
+        }
+        FileUtils.deleteRecursive("memFS:", false);
+    }
+
+    private void testConcurrentStoreAndRemoveMap() throws InterruptedException {
+        String fileName = "memFS:testConcurrentStoreAndRemoveMap.h3";
         final MVStore s = openStore(fileName);
+        int count = 200;
+        for (int i = 0; i < count; i++) {
+            MVMap<Integer, Integer> m = s.openMap("d" + i);
+            m.put(1, 1);
+        }
+        final AtomicInteger counter = new AtomicInteger();
         Task task = new Task() {
             @Override
             public void call() throws Exception {
-                int x = 0;
                 while (!stop) {
-                    s.setStoreVersion(x++);
-                    s.store();
+                    counter.incrementAndGet();
+                    s.commit();
                 }
             }
         };
         task.execute();
         Thread.sleep(1);
-        try {
-            s.close();
-            // sometimes closing works, in which case
-            // storing fails at some point
-            Thread.sleep(100);
-            Exception e = task.getException();
-            assertEquals(DataUtils.ERROR_CLOSED,
-                    DataUtils.getErrorCode(e.getMessage()));
-        } catch (IllegalStateException e) {
-            // sometimes storing works, in which case
-            // closing fails
-            assertEquals(DataUtils.ERROR_WRITING_FAILED,
-                    DataUtils.getErrorCode(e.getMessage()));
-            task.get();
+        for (int i = 0; i < count || counter.get() < count; i++) {
+            MVMap<Integer, Integer> m = s.openMap("d" + i);
+            m.put(1, 10);
+            s.removeMap(m);
+            if (task.isFinished()) {
+                break;
+            }
         }
+        task.get();
         s.close();
+        FileUtils.deleteRecursive("memFS:", false);
+    }
+
+    private void testConcurrentStoreAndClose() throws InterruptedException {
+        String fileName = "memFS:testConcurrentStoreAndClose";
+        for (int i = 0; i < 10; i++) {
+            FileUtils.delete(fileName);
+            final MVStore s = openStore(fileName);
+            final AtomicInteger counter = new AtomicInteger();
+            Task task = new Task() {
+                @Override
+                public void call() throws Exception {
+                    while (!stop) {
+                        s.setStoreVersion(counter.incrementAndGet());
+                        s.commit();
+                    }
+                }
+            };
+            task.execute();
+            while (counter.get() < 5) {
+                Thread.sleep(1);
+            }
+            try {
+                s.close();
+                // sometimes closing works, in which case
+                // storing must fail at some point (not necessarily
+                // immediately)
+                for (int x = counter.get(), y = x; x <= y + 2; x++) {
+                    Thread.sleep(1);
+                }
+                Exception e = task.getException();
+                assertEquals(DataUtils.ERROR_CLOSED,
+                        DataUtils.getErrorCode(e.getMessage()));
+            } catch (IllegalStateException e) {
+                // sometimes storing works, in which case
+                // closing must fail
+                assertEquals(DataUtils.ERROR_WRITING_FAILED,
+                        DataUtils.getErrorCode(e.getMessage()));
+                task.get();
+            }
+            s.close();
+        }
+        FileUtils.deleteRecursive("memFS:", false);
     }
 
     /**
@@ -132,7 +250,7 @@ public class TestConcurrent extends TestMVStore {
                 }
                 m.get(rand.nextInt(size));
             }
-            s.incrementVersion();
+            s.commit();
             Thread.sleep(1);
         }
         task.get();
@@ -149,17 +267,17 @@ public class TestConcurrent extends TestMVStore {
             @Override
             public void call() throws Exception {
                 while (!stop) {
-                    for (int i = 0; i < 20; i++) {
+                    for (int i = 0; i < 10; i++) {
                         map.put(i, new byte[100 * r.nextInt(100)]);
                     }
-                    s.store();
+                    s.commit();
                     map.clear();
-                    s.store();
+                    s.commit();
                     long len = s.getFileStore().size();
                     if (len > 1024 * 1024) {
                         // slow down writing a lot
                         Thread.sleep(200);
-                    } else if (len > 1024 * 100) {
+                    } else if (len > 20 * 1024) {
                         // slow down writing
                         Thread.sleep(20);
                     }
@@ -204,6 +322,7 @@ public class TestConcurrent extends TestMVStore {
 
     private void testConcurrentIterate() {
         MVStore s = new MVStore.Builder().pageSplitSize(3).open();
+        s.setVersionsToKeep(100);
         final MVMap<Integer, Integer> map = s.openMap("test");
         final int len = 10;
         final Random r = new Random();
@@ -224,8 +343,7 @@ public class TestConcurrent extends TestMVStore {
         for (int k = 0; k < 10000; k++) {
             Iterator<Integer> it = map.keyIterator(r.nextInt(len));
             long old = s.getCurrentVersion();
-            s.incrementVersion();
-            s.setRetainVersion(old - 100);
+            s.commit();
             while (map.getVersion() == old) {
                 Thread.yield();
             }
@@ -306,7 +424,7 @@ public class TestConcurrent extends TestMVStore {
                     notDetected.incrementAndGet();
                 }
             }
-            s.incrementVersion();
+            s.commit();
             Thread.sleep(1);
         }
         task.get();
@@ -321,7 +439,7 @@ public class TestConcurrent extends TestMVStore {
         for (int i = 0; i < size; i++) {
             m.put(i, x);
         }
-        s.incrementVersion();
+        s.commit();
         Task task = new Task() {
             @Override
             public void call() throws Exception {
@@ -345,7 +463,7 @@ public class TestConcurrent extends TestMVStore {
             for (int i = 0; i < size; i++) {
                 m.put(i, x);
             }
-            s.incrementVersion();
+            s.commit();
             Thread.sleep(1);
         }
         task.get();

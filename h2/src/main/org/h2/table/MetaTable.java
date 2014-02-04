@@ -40,6 +40,8 @@ import org.h2.index.IndexType;
 import org.h2.index.MetaIndex;
 import org.h2.index.MultiVersionIndex;
 import org.h2.message.DbException;
+import org.h2.mvstore.FileStore;
+import org.h2.mvstore.db.MVTableEngine.Store;
 import org.h2.result.Row;
 import org.h2.result.SearchRow;
 import org.h2.result.SortOrder;
@@ -252,6 +254,9 @@ public class MetaTable extends Table {
                     "IS_GENERATED BIT",
                     "REMARKS",
                     "CACHE BIGINT",
+                    "MIN_VALUE BIGINT",
+                    "MAX_VALUE BIGINT",
+                    "IS_CYCLE BIT",
                     "ID INT"
             );
             break;
@@ -916,13 +921,23 @@ public class MetaTable extends Table {
             }
             if (database.isPersistent()) {
                 PageStore store = database.getPageStore();
-                add(rows, "info.FILE_WRITE_TOTAL", "" + store.getWriteCountTotal());
-                add(rows, "info.FILE_WRITE", "" + store.getWriteCount());
-                add(rows, "info.FILE_READ", "" + store.getReadCount());
-                add(rows, "info.PAGE_COUNT", "" + store.getPageCount());
-                add(rows, "info.PAGE_SIZE", "" + store.getPageSize());
-                add(rows, "info.CACHE_MAX_SIZE", "" + store.getCache().getMaxMemory());
-                add(rows, "info.CACHE_SIZE", "" + store.getCache().getMemory());
+                if (store != null) {
+                    add(rows, "info.FILE_WRITE_TOTAL", "" + store.getWriteCountTotal());
+                    add(rows, "info.FILE_WRITE", "" + store.getWriteCount());
+                    add(rows, "info.FILE_READ", "" + store.getReadCount());
+                    add(rows, "info.PAGE_COUNT", "" + store.getPageCount());
+                    add(rows, "info.PAGE_SIZE", "" + store.getPageSize());
+                    add(rows, "info.CACHE_MAX_SIZE", "" + store.getCache().getMaxMemory());
+                    add(rows, "info.CACHE_SIZE", "" + store.getCache().getMemory());
+                }
+                Store mvStore = database.getMvStore();
+                if (mvStore != null) {
+                    FileStore fs = mvStore.getStore().getFileStore();
+                    add(rows, "info.FILE_WRITE", "" + fs.getWriteCount());
+                    add(rows, "info.FILE_READ", "" + fs.getReadCount());
+                    add(rows, "info.CACHE_MAX_SIZE", "" + mvStore.getStore().getCacheSize());
+                    add(rows, "info.CACHE_SIZE", "" + mvStore.getStore().getCacheSizeUsed());
+                }
             }
             break;
         }
@@ -1007,10 +1022,16 @@ public class MetaTable extends Table {
                         String.valueOf(s.getIncrement()),
                         // IS_GENERATED
                         s.getBelongsToTable() ? "TRUE" : "FALSE",
-                                // REMARKS
+                        // REMARKS
                         replaceNullWithEmpty(s.getComment()),
                         // CACHE
                         String.valueOf(s.getCacheSize()),
+                        // MIN_VALUE
+                        String.valueOf(s.getMinValue()),
+                        // MAX_VALUE
+                        String.valueOf(s.getMaxValue()),
+                        // IS_CYCLE
+                        s.getCycle() ? "TRUE" : "FALSE",
                         // ID
                         "" + s.getId()
                     );

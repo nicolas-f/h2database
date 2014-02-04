@@ -24,6 +24,63 @@ public class DbColumn {
 
     private int position;
 
+    private DbColumn(DbContents contents, ResultSet rs, boolean procedureColumn) throws SQLException {
+        name = rs.getString("COLUMN_NAME");
+        quotedName = contents.quoteIdentifier(name);
+        String type = rs.getString("TYPE_NAME");
+        // a procedures column size is identified by PRECISION, for table this
+        // is COLUMN_SIZE
+        String precisionColumnName;
+        if (procedureColumn) {
+            precisionColumnName = "PRECISION";
+        } else {
+            precisionColumnName = "COLUMN_SIZE";
+        }
+        int precision = rs.getInt(precisionColumnName);
+        position = rs.getInt("ORDINAL_POSITION");
+        boolean isSQLite = contents.isSQLite();
+        if (precision > 0 && !isSQLite) {
+            type += "(" + precision;
+            String scaleColumnName;
+            if (procedureColumn) {
+                scaleColumnName = "SCALE";
+            } else {
+                scaleColumnName = "DECIMAL_DIGITS";
+            }
+            int prec = rs.getInt(scaleColumnName);
+            if (prec > 0) {
+                type += ", " + prec;
+            }
+            type += ")";
+        }
+        if (rs.getInt("NULLABLE") == DatabaseMetaData.columnNoNulls) {
+            type += " NOT NULL";
+        }
+        dataType = type;
+    }
+
+    /**
+     * Create a column from a DatabaseMetaData.getProcedureColumns row.
+     *
+     * @param contents the database contents
+     * @param rs the result set
+     * @return the column
+     */
+    public static DbColumn getProcedureColumn(DbContents contents, ResultSet rs) throws SQLException {
+        return new DbColumn(contents, rs, true);
+    }
+
+    /**
+     * Create a column from a DatabaseMetaData.getColumns row.
+     *
+     * @param contents the database contents
+     * @param rs the result set
+     * @return the column
+     */
+    public static DbColumn getColumn(DbContents contents, ResultSet rs) throws SQLException {
+        return new DbColumn(contents, rs, false);
+    }
+
     /**
      * @return The data type name (including precision and the NOT NULL flag if
      * applicable).
@@ -53,31 +110,4 @@ public class DbColumn {
         return position;
     }
 
-    public DbColumn(DbContents contents, ResultSet rs) throws SQLException {
-        name = rs.getString("COLUMN_NAME");
-        quotedName = contents.quoteIdentifier(name);
-        String type = rs.getString("TYPE_NAME");
-        // A procedures column size is identified by PRECISION, for table this is COLUMN_SIZE
-        int precisionColumnIndex = DbContents.findColumn(rs, "PRECISION", 0);
-        int size;
-        if( precisionColumnIndex == 0 ){
-            size = rs.getInt(DbContents.findColumn(rs, "COLUMN_SIZE", 7));
-        } else {
-            size = rs.getInt(precisionColumnIndex);
-        }
-        position = rs.getInt("ORDINAL_POSITION");
-        boolean isSQLite = contents.isSQLite();
-        if (size > 0 && !isSQLite) {
-            type += "(" + size;
-            int prec = rs.getInt(DbContents.findColumn(rs, "DECIMAL_DIGITS", 9));
-            if (prec > 0) {
-                type += ", " + prec;
-            }
-            type += ")";
-        }
-        if (rs.getInt("NULLABLE") == DatabaseMetaData.columnNoNulls) {
-            type += " NOT NULL";
-        }
-        dataType = type;
-    }
 }

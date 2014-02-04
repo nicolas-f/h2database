@@ -10,7 +10,10 @@ import java.io.InputStream;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.h2.api.TableEngine;
 import org.h2.command.ddl.CreateTableData;
@@ -21,6 +24,7 @@ import org.h2.engine.Session;
 import org.h2.message.DbException;
 import org.h2.mvstore.DataUtils;
 import org.h2.mvstore.FileStore;
+import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
 import org.h2.mvstore.db.TransactionStore.Transaction;
 import org.h2.store.InDoubtTransaction;
@@ -102,13 +106,13 @@ public class MVTableEngine implements TableEngine {
     @Override
     public TableBase createTable(CreateTableData data) {
         Database db = data.session.getDatabase();
-        if (!data.persistData || (data.temporary && !data.persistIndexes)) {
+        if (!data.persistData) {
             return new RegularTable(data);
         }
         Store store = init(db);
         MVTable table = new MVTable(data, store);
-        store.openTables.add(table);
         table.init(data.session);
+        store.tableMap.put(table.getMapName(), table);
         return table;
     }
 
@@ -123,9 +127,10 @@ public class MVTableEngine implements TableEngine {
         final Database db;
 
         /**
-         * The list of open tables.
+         * The map of open tables.
+         * Key: the map name, value: the table.
          */
-        final ArrayList<MVTable> openTables = New.arrayList();
+        final ConcurrentHashMap<String, MVTable> tableMap = new ConcurrentHashMap<String, MVTable>();
 
         /**
          * The store.
@@ -136,6 +141,10 @@ public class MVTableEngine implements TableEngine {
          * The transaction store.
          */
         private final TransactionStore transactionStore;
+
+        private long statisticsStart;
+
+        private int temporaryMapId;
 
         public Store(Database db, MVStore store) {
             this.db = db;
@@ -152,8 +161,8 @@ public class MVTableEngine implements TableEngine {
             return transactionStore;
         }
 
-        public List<MVTable> getTables() {
-            return openTables;
+        public HashMap<String, MVTable> getTables() {
+            return new HashMap<String, MVTable>(tableMap);
         }
 
         /**
@@ -162,20 +171,20 @@ public class MVTableEngine implements TableEngine {
          * @param table the table
          */
         public void removeTable(MVTable table) {
-            openTables.remove(table);
+            tableMap.remove(table.getMapName());
         }
 
         /**
          * Store all pending changes.
          */
-        public void store() {
+        public void flush() {
             FileStore s = store.getFileStore();
             if (s == null || s.isReadOnly()) {
                 return;
             }
-            store.commit();
-            store.compact(50);
-            store.store();
+            if (!store.compact(50)) {
+                store.commit();
+            }
         }
 
         /**
@@ -204,6 +213,27 @@ public class MVTableEngine implements TableEngine {
         }
 
         /**
+         * Remove all temporary maps.
+         */
+        public void removeTemporaryMaps() {
+            for (String mapName : store.getMapNames()) {
+                if (mapName.startsWith("temp.")) {
+                    MVMap<?, ?> map = store.openMap(mapName);
+                    store.removeMap(map);
+                }
+            }
+        }
+
+        /**
+         * Get the name of the next available temporary map.
+         *
+         * @return the map name
+         */
+        public synchronized String nextTemporaryMapName() {
+            return "temp." + temporaryMapId++;
+        }
+
+        /**
          * Prepare a transaction.
          *
          * @param session the session
@@ -213,9 +243,7 @@ public class MVTableEngine implements TableEngine {
             Transaction t = session.getTransaction();
             t.setName(transactionName);
             t.prepare();
-            if (store.getFileStore() != null) {
-                store.store();
-            }
+            store.commit();
         }
 
         public ArrayList<InDoubtTransaction> getInDoubtTransactions() {
@@ -230,7 +258,7 @@ public class MVTableEngine implements TableEngine {
         }
 
         public void setCacheSize(int kb) {
-            store.setCacheSize(kb * 1024);
+            store.setCacheSize(Math.max(1, kb / 1024));
         }
 
         public InputStream getInputStream() {
@@ -245,7 +273,7 @@ public class MVTableEngine implements TableEngine {
          * Force the changes to disk.
          */
         public void sync() {
-            store();
+            flush();
             store.sync();
         }
 
@@ -260,7 +288,7 @@ public class MVTableEngine implements TableEngine {
         public void compactFile(long maxCompactTime) {
             store.setRetentionTime(0);
             long start = System.currentTimeMillis();
-            while (store.compact(90)) {
+            while (store.compact(99)) {
                 store.sync();
                 long time = System.currentTimeMillis() - start;
                 if (time > maxCompactTime) {
@@ -278,19 +306,44 @@ public class MVTableEngine implements TableEngine {
          * @param maxCompactTime the maximum time in milliseconds to compact
          */
         public void close(long maxCompactTime) {
-            if (!store.isClosed() && store.getFileStore() != null) {
-                if (!store.getFileStore().isReadOnly()) {
-                    store.store();
-                    long start = System.currentTimeMillis();
-                    while (store.compact(90)) {
-                        long time = System.currentTimeMillis() - start;
-                        if (time > maxCompactTime) {
-                            break;
+            try {
+                if (!store.isClosed() && store.getFileStore() != null) {
+                    if (!store.getFileStore().isReadOnly()) {
+                        transactionStore.close();
+                        long start = System.currentTimeMillis();
+                        while (store.compact(90)) {
+                            long time = System.currentTimeMillis() - start;
+                            if (time > maxCompactTime) {
+                                break;
+                            }
                         }
                     }
+                    store.close();
                 }
-                store.close();
-            }
+            } catch (IllegalStateException e) {
+                throw DbException.get(ErrorCode.IO_EXCEPTION_1, e, "Closing");
+            }                
+        }
+
+        /**
+         * Start collecting statistics.
+         */
+        public void statisticsStart() {
+            FileStore fs = store.getFileStore();
+            statisticsStart = fs == null ? 0 : fs.getReadCount();
+        }
+
+        /**
+         * Stop collecting statistics.
+         *
+         * @return the statistics
+         */
+        public Map<String, Integer> statisticsEnd() {
+            HashMap<String, Integer> map = New.hashMap();
+            FileStore fs = store.getFileStore();
+            int reads = fs == null ? 0 : (int) (fs.getReadCount() - statisticsStart);
+            map.put("reads", reads);
+            return map;
         }
 
     }
@@ -316,9 +369,7 @@ public class MVTableEngine implements TableEngine {
             } else {
                 transaction.rollback();
             }
-            if (store.getFileStore() != null) {
-                store.store();
-            }
+            store.commit();
             this.state = state;
         }
 

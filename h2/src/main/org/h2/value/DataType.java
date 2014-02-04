@@ -15,6 +15,7 @@ import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.Date;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -30,7 +31,6 @@ import org.h2.jdbc.JdbcBlob;
 import org.h2.jdbc.JdbcClob;
 import org.h2.jdbc.JdbcConnection;
 import org.h2.message.DbException;
-import org.h2.store.LobStorageFrontend;
 import org.h2.tools.SimpleResultSet;
 import org.h2.util.New;
 import org.h2.util.Utils;
@@ -569,7 +569,7 @@ public class DataType {
             }
             case Value.CLOB: {
                 if (session == null) {
-                    v = LobStorageFrontend.createSmallLob(Value.CLOB, rs.getString(columnIndex).getBytes(Constants.UTF8));
+                    v = ValueLobDb.createSmallLob(Value.CLOB, rs.getString(columnIndex).getBytes(Constants.UTF8));
                 } else {
                     Reader in = rs.getCharacterStream(columnIndex);
                     if (in == null) {
@@ -582,7 +582,7 @@ public class DataType {
             }
             case Value.BLOB: {
                 if (session == null) {
-                    v = LobStorageFrontend.createSmallLob(Value.BLOB, rs.getBytes(columnIndex));
+                    v = ValueLobDb.createSmallLob(Value.BLOB, rs.getBytes(columnIndex));
                 } else {
                     InputStream in = rs.getBinaryStream(columnIndex);
                     v = (in == null) ? (Value) ValueNull.INSTANCE : session.getDataHandler().getLobStorage().createBlob(in, -1);
@@ -739,6 +739,40 @@ public class DataType {
      */
     public static int convertTypeToSQLType(int type) {
         return getDataType(type).sqlType;
+    }
+
+    /**
+     * Convert a SQL type to a value type using SQL type name, in order to
+     * manage SQL type extension mechanism.
+     *
+     * @param sqlType the SQL type
+     * @param sqlTypeName the SQL type name
+     * @return the value type
+     */
+    private static int convertSQLTypeToValueType(int sqlType, String sqlTypeName) {
+        switch(sqlType) {
+            case Types.OTHER:
+            case Types.JAVA_OBJECT:
+                if (sqlTypeName.equalsIgnoreCase("geometry")) {
+                    return Value.GEOMETRY;
+                }
+        }
+        return convertSQLTypeToValueType(sqlType);
+    }
+
+    /**
+     * Get the SQL type from the result set meta data for the given column. This
+     * method uses the SQL type and type name.
+     *
+     * @param meta the meta data
+     * @param columnIndex the column index (1, 2,...)
+     * @return the value type
+     */
+    public static int getValueTypeFromResultSet(ResultSetMetaData meta, int columnIndex)
+            throws SQLException {
+        return convertSQLTypeToValueType(
+                meta.getColumnType(columnIndex),
+                meta.getColumnTypeName(columnIndex));
     }
 
     /**

@@ -173,6 +173,7 @@ without the insert statements is returned.
 The password must be in single quotes; it is case sensitive and can contain spaces.
 
 This command locks objects while it is running.
+Admin rights are required to execute this command.
 
 When using the TABLE or SCHEMA option, only the selected table(s) / schema(s) are included.
 ","
@@ -208,8 +209,12 @@ ALTER SCHEMA TEST RENAME TO PRODUCTION
 
 "Commands (DDL)","ALTER SEQUENCE","
 ALTER SEQUENCE sequenceName [ RESTART WITH long ] [ INCREMENT BY long ]
+[ MINVALUE long | NOMINVALUE | NO MINVALUE ]
+[ MAXVALUE long | NOMAXVALUE | NO MAXVALUE ]
+[ CYCLE long | NOCYCLE |  NO CYCLE ]
+[ CACHE long |  NOCACHE |  NO CACHE ]
 ","
-Changes the next value and the increment of a sequence.
+Changes the parameters of a sequence.
 This command does not commit the current transaction; however the new value is used by other
 transactions immediately, and rolling back this command has no effect.
 ","
@@ -416,11 +421,15 @@ CREATE AGGREGATE MEDIAN FOR ""com.acme.db.Median""
 "
 
 "Commands (DDL)","CREATE ALIAS","
-CREATE ALIAS [ IF NOT EXISTS ] newFunctionAliasName [ DETERMINISTIC ]
+CREATE ALIAS [ IF NOT EXISTS ] newFunctionAliasName [ DETERMINISTIC ] [ NOBUFFER ]
 { FOR classAndMethodName | AS sourceCodeString }
 ","
-Creates a new function alias. Deterministic functions must always return the
-same value for the same parameters. The result of such functions is cached if possible.
+Creates a new function alias. If this is a ResultSet returning function,
+by default the return value is cached in a local temporary file.
+
+NOBUFFER - disables caching of ResultSet return value to temporary file.
+
+DETERMINISTIC - Deterministic functions must always return the same value for the same parameters.
 
 The method name must be the full qualified class and method name,
 and may optionally include the parameter classes as in
@@ -566,7 +575,11 @@ CREATE SCHEMA TEST_SCHEMA AUTHORIZATION SA
 
 "Commands (DDL)","CREATE SEQUENCE","
 CREATE SEQUENCE [ IF NOT EXISTS ] newSequenceName [ START WITH long ]
-[ INCREMENT BY long ] [ CACHE long ]
+[ INCREMENT BY long ]
+[ MINVALUE long | NOMINVALUE | NO MINVALUE ]
+[ MAXVALUE long | NOMAXVALUE | NO MAXVALUE ]
+[ CYCLE long | NOCYCLE |  NO CYCLE ]
+[ CACHE long |  NOCACHE |  NO CACHE ]
 ","
 Creates a new sequence.
 The data type of a sequence is BIGINT.
@@ -900,6 +913,17 @@ Admin rights are required to execute this command.
 This command commits an open transaction.
 ","
 GRANT SELECT ON TEST TO READONLY
+"
+
+"Commands (Other)","GRANT ALTER ANY SCHEMA","
+GRANT ALTER ANY SCHEMA TO userName
+","
+Grant schema altering rights to a user.
+
+Admin rights are required to execute this command.
+This command commits an open transaction.
+","
+GRANT ALTER ANY SCHEMA TO Bob
 "
 
 "Commands (Other)","GRANT ROLE","
@@ -1299,10 +1323,8 @@ SET MAX_LENGTH_INPLACE_LOB int
 ","
 Sets the maximum size of an in-place LOB object.
 
-If the 'h2.lobInDatabase' property is true, this is the maximum length of an LOB that is stored with the record itself,
+This is the maximum length of an LOB that is stored with the record itself,
 and the default value is 128.
-If the 'h2.lobInDatabase' property is false, this is the maximum length of an LOB that is stored in the database file,
-and the default value is 4096.
 
 This setting has no effect for in-memory databases.
 
@@ -3325,6 +3347,14 @@ If enabled, newline and linefeed is converted to an XML entity (&#).
 This method returns a string.
 ","
 CALL XMLTEXT('test')
+"
+
+"Functions (String)","TO_CHAR","
+TO_CHAR(value [, formatString[, nlsParamString]])
+","
+Oracle-compatible TO_CHAR function that can format a timestamp, a number, or text.
+","
+CALL TO_CHAR(TIMESTAMP '2010-01-01 00:00:00', 'DD MON, YYYY')
 "
 
 "Functions (Time and Date)","CURRENT_DATE","

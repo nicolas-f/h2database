@@ -9,6 +9,7 @@ package org.h2.mvstore.rtree;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import org.h2.mvstore.DataUtils;
+import org.h2.mvstore.WriteBuffer;
 import org.h2.mvstore.type.DataType;
 
 /**
@@ -51,9 +52,23 @@ public class SpatialDataType implements DataType {
     public int getMemory(Object obj) {
         return 40 + dimensions * 4;
     }
+    
+    @Override
+    public void read(ByteBuffer buff, Object[] obj, int len, boolean key) {
+        for (int i = 0; i < len; i++) {
+            obj[i] = read(buff);
+        }
+    }
+    
+    @Override
+    public void write(WriteBuffer buff, Object[] obj, int len, boolean key) {
+        for (int i = 0; i < len; i++) {
+            write(buff, obj[i]);
+        }
+    }
 
     @Override
-    public ByteBuffer write(ByteBuffer buff, Object obj) {
+    public void write(WriteBuffer buff, Object obj) {
         SpatialKey k = (SpatialKey) obj;
         int flags = 0;
         for (int i = 0; i < dimensions; i++) {
@@ -61,15 +76,14 @@ public class SpatialDataType implements DataType {
                 flags |= 1 << i;
             }
         }
-        DataUtils.writeVarInt(buff, flags);
+        buff.putVarInt(flags);
         for (int i = 0; i < dimensions; i++) {
             buff.putFloat(k.min(i));
             if ((flags & (1 << i)) == 0) {
                 buff.putFloat(k.max(i));
             }
         }
-        DataUtils.writeVarLong(buff, k.getId());
-        return buff;
+        buff.putVarLong(k.getId());
     }
 
     @Override
