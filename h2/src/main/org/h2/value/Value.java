@@ -799,7 +799,7 @@ public abstract class Value {
             case GEORASTER: {
                 switch(getType()) {
                 case BYTES:
-                    return ValueLobDb.createSmallLob(Value.BLOB, getBytesNoCopy());
+                    return ValueLobDb.createSmallLob(Value.GEORASTER, getBytesNoCopy());
                 }
                 break;
             }
@@ -877,7 +877,7 @@ public abstract class Value {
             case BLOB:
                 return ValueLobDb.createSmallLob(BLOB, StringUtils.convertHexToBytes(s.trim()));
             case GEORASTER:
-                return ValueLobDb.createSmallLob(BLOB, StringUtils.convertHexToBytes(s.trim()));
+                return ValueLobDb.createSmallLob(GEORASTER, StringUtils.convertHexToBytes(s.trim()));
             case ARRAY:
                 return ValueArray.get(new Value[]{ValueString.get(s)});
             case RESULT_SET: {

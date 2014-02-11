@@ -347,7 +347,7 @@ public class ValueLob extends Value {
      * @param handler the data handler
      * @return the lob value
      */
-    private static ValueLob createBlob(InputStream in, long length, DataHandler handler) {
+    protected static ValueLob createBlob(InputStream in, long length, DataHandler handler) {
         try {
             if (handler == null) {
                 byte[] data = IOUtils.readBytesAndClose(in, (int) length);
