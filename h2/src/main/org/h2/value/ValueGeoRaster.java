@@ -20,7 +20,7 @@ import com.vividsolutions.jts.geom.Envelope;
  *
  * @author Thomas Crevoisier, Jules Party
  */
-public class ValueGeoRaster extends ValueLob {
+public class ValueGeoRaster extends ValueLob implements ValueSpatial {
 
     static Value get(byte[] bytesNoCopy) {
         InputStream bytesStream = new ByteArrayInputStream(bytesNoCopy);
@@ -29,7 +29,7 @@ public class ValueGeoRaster extends ValueLob {
     }
 
 
-    /*
+    /**
      * Create a GeoRaster from a value lob
      * 
      */
@@ -39,7 +39,7 @@ public class ValueGeoRaster extends ValueLob {
         hash = v.hash;
     }
     
-    /*
+    /**
      * Create a GeoRaster from a given byte input stream
      * 
      * @param in the InputStream to build the GeoRaster from
@@ -51,11 +51,12 @@ public class ValueGeoRaster extends ValueLob {
         return geoRaster;
     }
 
-    /*
+    /**
      * Create an envelope based on the inputstream of the georaster
      *
      * @return the envelope of the georaster
      */
+    @Override
     public Envelope getEnvelope(){
         InputStream input = getInputStream();
 
@@ -130,8 +131,8 @@ public class ValueGeoRaster extends ValueLob {
 
         return null;
     }
-    
-    /*
+
+    /**
      * Convert an given array of bytes into a short int by precising the value of endian
      * 
      * @param buff the array of bytes to convert

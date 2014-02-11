@@ -30,7 +30,7 @@ import com.vividsolutions.jts.io.WKTWriter;
  * @author Noel Grandin
  * @author Nicolas Fortin, Atelier SIG, IRSTV FR CNRS 24888
  */
-public class ValueGeometry extends Value {
+public class ValueGeometry extends Value implements ValueSpatial {
 
     /**
      * The value. Converted from WKB only on request as conversion from/to WKB
@@ -112,6 +112,17 @@ public class ValueGeometry extends Value {
     public boolean intersectsBoundingBox(ValueGeometry r) {
         // the Geometry object caches the envelope
         return getGeometry().getEnvelopeInternal().intersects(r.getGeometry().getEnvelopeInternal());
+    }
+
+    /**
+     * Create the envelope of this geometry.
+     *
+     * @return the envelope of the geometry
+     */
+    @Override
+    public Envelope getEnvelope(){
+        Geometry g = getGeometry();
+        return g.getEnvelopeInternal();
     }
 
     /**

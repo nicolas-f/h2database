@@ -26,6 +26,7 @@ import org.h2.value.ValueGeometry;
 
 import com.vividsolutions.jts.geom.Envelope;
 import com.vividsolutions.jts.geom.Geometry;
+import org.h2.value.ValueSpatial;
 
 /**
  * This is an index based on a MVR-TreeMap.
@@ -123,11 +124,14 @@ public class SpatialTreeIndex extends BaseIndex implements SpatialIndex {
 
     private SpatialKey getEnvelope(SearchRow row) {
         Value v = row.getValue(columnIds[0]);
-        Geometry g = ((ValueGeometry) v.convertTo(Value.GEOMETRY)).getGeometry();
-        Envelope env = g.getEnvelopeInternal();
-        return new SpatialKey(row.getKey(),
+        if(v instanceof ValueSpatial) {
+            ValueSpatial vs = (ValueSpatial) v;
+            Envelope env = vs.getEnvelope();
+            return new SpatialKey(row.getKey(),
                 (float) env.getMinX(), (float) env.getMaxX(),
                 (float) env.getMinY(), (float) env.getMaxY());
+        }
+        return null;
     }
 
     @Override

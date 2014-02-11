@@ -783,7 +783,6 @@ public abstract class Value {
             case JAVA_OBJECT: {
                 switch(getType()) {
                 case BYTES:
-                case GEORASTER:
                 case BLOB:
                     return ValueJavaObject.getNoCopy(null, getBytesNoCopy(), getDataHandler());
                 }
@@ -799,7 +798,7 @@ public abstract class Value {
             case GEORASTER: {
                 switch(getType()) {
                 case BYTES:
-                    return ValueLobDb.createSmallLob(Value.GEORASTER, getBytesNoCopy());
+                    return ValueGeoRaster.get(getBytesNoCopy());
                 }
                 break;
             }
@@ -877,7 +876,7 @@ public abstract class Value {
             case BLOB:
                 return ValueLobDb.createSmallLob(BLOB, StringUtils.convertHexToBytes(s.trim()));
             case GEORASTER:
-                return ValueLobDb.createSmallLob(GEORASTER, StringUtils.convertHexToBytes(s.trim()));
+                return ValueGeoRaster.get(StringUtils.convertHexToBytes(s.trim()));
             case ARRAY:
                 return ValueArray.get(new Value[]{ValueString.get(s)});
             case RESULT_SET: {
