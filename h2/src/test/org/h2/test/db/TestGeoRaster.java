@@ -1,19 +1,16 @@
 
 package org.h2.test.db;
 
+import com.vividsolutions.jts.geom.Envelope;
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Random;
-import org.h2.store.DataHandler;
 import org.h2.test.TestBase;
 import org.h2.value.ValueGeoRaster;
-import org.junit.Assert;
-import org.junit.Test;
 
 /**
  *
@@ -29,6 +26,8 @@ public class TestGeoRaster extends TestBase {
     
     @Override
     public void test() throws Exception {
+        testEmptyGeoRaster();
+        testGeoRasterWithBands();
         testReadRaster();
         testWriteRasterFromString();
     }
@@ -94,7 +93,6 @@ public class TestGeoRaster extends TestBase {
         conn.close();
     }
     
-    @Test
     public void testEmptyGeoRaster() throws Exception {
         String bytesString = "01"
                 + "0000"
@@ -114,35 +112,58 @@ public class TestGeoRaster extends TestBase {
         InputStream bytesStream = new ByteArrayInputStream(bytes);
         long len = bytes.length;
         ValueGeoRaster testRaster = ValueGeoRaster.createGeoRaster(bytesStream, len, null);
-        assertTrue(testRaster.getVersion()==0);
-        assertTrue(testRaster.getNumBands()==0);
-        assertTrue(testRaster.getScaleX()==2);
-        assertTrue(testRaster.getScaleY()==3);
-        assertTrue(testRaster.getIpX()==0.5);
-        assertTrue(testRaster.getIpY()==0.5);
-        assertTrue(testRaster.getSkewX()==0);
-        assertTrue(testRaster.getSkewY()==0);
-        assertTrue(testRaster.getSrid()==0);
-        assertTrue(testRaster.getWidth()==10);
-        assertTrue(testRaster.getHeight()==20);
+        Envelope env = testRaster.getEnvelope();
+        assertEquals(env.getMinX(), 0.5);
+        assertEquals(env.getMinY(), 0.5);
+        assertEquals(env.getMaxX(), 20.5);
+        assertEquals(env.getMaxY(), 30.5);
     }
 
-    @Test
     public void testGeoRasterWithBands() throws Exception {
-        String bytesString = "01000003009A9999999999A93F9A9999999999A9BF000000E02B274A" +
-"41000000007719564100000000000000000000000000000000FFFFFFFF050005000400FDFEFDFEFEFDFEFEFDF9FAFEF" +
-"EFCF9FBFDFEFEFDFCFAFEFEFE04004E627AADD16076B4F9FE6370A9F5FE59637AB0E54F58617087040046566487A1506CA2E3FA5A6CAFFBFE4D566DA4CB3E454C5665";
+        String bytesString = "01"
+                + "0000"
+                + "0300"
+                + "9A9999999999A93F"
+                + "9A9999999999A9BF"
+                + "000000E02B274A41"
+                + "0000000077195641"
+                + "0000000000000000"
+                + "0000000000000000"
+                + "FFFFFFFF"
+                + "0500"
+                + "0500"
+                + "04"
+                + "00"
+                + "FDFEFDFEFE"
+                + "FDFEFEFDF9"
+                + "FAFEFEFCF9"
+                + "FBFDFEFEFD"
+                + "FCFAFEFEFE"
+                + "04"
+                + "00"
+                + "4E627AADD1"
+                + "6076B4F9FE"
+                + "6370A9F5FE"
+                + "59637AB0E5"
+                + "4F58617087"
+                + "04"
+                + "00"
+                + "46566487A1"
+                + "506CA2E3FA"
+                + "5A6CAFFBFE"
+                + "4D566DA4CB"
+                + "3E454C5665";
         
         byte[] bytes = hexStringToByteArray(bytesString);
         
         InputStream bytesStream = new ByteArrayInputStream(bytes);
         long len = bytes.length;
         ValueGeoRaster testRaster = ValueGeoRaster.createGeoRaster(bytesStream, len, null);
-        // Check only if we get the right value for numBands
-        Assert.assertTrue(testRaster.getVersion()==0);
-        Assert.assertTrue(testRaster.getNumBands()==3);
-        Assert.assertTrue(testRaster.getWidth()==5);
-        Assert.assertTrue(testRaster.getHeight()==5);
+        Envelope env = testRaster.getEnvelope();
+        assertEquals(env.getMinX(), 3427927.75);
+        assertEquals(env.getMinY(), 5793243.75);
+        assertEquals(env.getMaxX(), 3427928);
+        assertEquals(env.getMaxY(), 5793244);
     }
     
     public static byte[] hexStringToByteArray(String s) {
@@ -153,19 +174,5 @@ public class TestGeoRaster extends TestBase {
                                  + Character.digit(s.charAt(i+1), 16));
         }
         return data;
-    }
-    
-    @Test
-    public void testQueryIndexBand() throws IOException{
-        String bytesString = "01000003009A9999999999A93F9A9999999999A9BF000000E02B274A" +
-"41000000007719564100000000000000000000000000000000FFFFFFFF050005000400FDFEFDFEFEFDFEFEFDF9FAFEF" +
-"EFCF9FBFDFEFEFDFCFAFEFEFE04004E627AADD16076B4F9FE6370A9F5FE59637AB0E54F58617087040046566487A1506CA2E3FA5A6CAFFBFE4D566DA4CB3E454C5665";
-        
-        byte[] bytes = hexStringToByteArray(bytesString);
-        
-        InputStream bytesStream = new ByteArrayInputStream(bytes);
-        long len = bytes.length;
-        ValueGeoRaster testRaster = ValueGeoRaster.createGeoRaster(bytesStream, len, null);
-        System.out.println("Result :"+testRaster.getIndexBand(1));
     }
 }

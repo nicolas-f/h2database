@@ -10,11 +10,11 @@ import com.vividsolutions.jts.io.ByteOrderValues;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.h2.message.DbException;
 import org.h2.store.DataHandler;
+
+import com.vividsolutions.jts.geom.Envelope;
 
 /**
  *
@@ -28,23 +28,6 @@ public class ValueGeoRaster extends ValueLob {
         return ValueGeoRaster.createGeoRaster(bytesStream, len, null);
     }
 
-    protected short version;
-
-    /* Number of bands, all share the same dimension
-     * and georeference */
-    protected short numBands;
-
-    /* Georeference (in projection units) */
-    protected double scaleX; /* pixel width */
-    protected double scaleY; /* pixel height */
-    protected double ipX; /* geo x ordinate of the corner of upper-left pixel */
-    protected double ipY; /* geo y ordinate of the corner of bottom-right pixel */
-    protected double skewX; /* skew about the X axis*/
-    protected double skewY; /* skew about the Y axis */
-
-    protected int srid; /* spatial reference id */
-    protected short width; /* pixel columns - max 65535 */
-    protected short height; /* pixel rows - max 65535 */
 
     /*
      * Create a GeoRaster from a value lob
@@ -64,67 +47,88 @@ public class ValueGeoRaster extends ValueLob {
      * @return the ValueGeoRaster created
      */
     public static ValueGeoRaster createGeoRaster(InputStream in, long length, DataHandler handler){
-        try{
-            ValueGeoRaster geoRaster = new ValueGeoRaster(ValueLob.createBlob(in, length, handler));
-            byte[] firstBytesBlob = geoRaster.getBytes();
-            int cursor = 1;
-            
-            int sizeShort = 2;
-            int sizeInt = 4;
-            int sizeDouble = 8;
+        ValueGeoRaster geoRaster = new ValueGeoRaster(ValueLob.createBlob(in, length, handler));
+        return geoRaster;
+    }
 
+    /*
+     * Create an envelope based on the inputstream of the georaster
+     *
+     * @return the envelope of the georaster
+     */
+    public Envelope getEnvelope(){
+        InputStream input = getInputStream();
+
+        try {
             byte[] buffer = new byte[8];
 
-            in.read(buffer, 0, 1);
-            int endian = buffer[0]==0 ? ByteOrderValues.LITTLE_ENDIAN  : ByteOrderValues.BIG_ENDIAN;
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeShort);
-            cursor += sizeShort;
-            geoRaster.version = getShort(buffer, endian);
+            // Retrieve the endian value
+            input.read(buffer, 0, 1);
+            int endian = buffer[0]==1 ? ByteOrderValues.LITTLE_ENDIAN  : ByteOrderValues.BIG_ENDIAN;
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeShort);
-            cursor += sizeShort;
-            geoRaster.numBands = getShort(buffer, endian);
+            // Skip the bytes related to the version and the number of bands
+            input.skip(4);
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeDouble);
-            cursor += sizeDouble;
-            geoRaster.scaleX = ByteOrderValues.getDouble(buffer, endian);
+            // Retrieve scale values
+            input.read(buffer,0,8);
+            double scaleX = ByteOrderValues.getDouble(buffer, endian);
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeDouble);
-            cursor += sizeDouble;
-            geoRaster.scaleY = ByteOrderValues.getDouble(buffer, endian);
+            input.read(buffer,0,8);
+            double scaleY = ByteOrderValues.getDouble(buffer, endian);
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeDouble);
-            cursor += sizeDouble;
-            geoRaster.ipX = ByteOrderValues.getDouble(buffer, endian);
+            // Retrieve ip values
+            input.read(buffer,0,8);
+            double ipX = ByteOrderValues.getDouble(buffer, endian);
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeDouble);
-            cursor += sizeDouble;
-            geoRaster.ipY = ByteOrderValues.getDouble(buffer, endian);
+            input.read(buffer,0,8);
+            double ipY = ByteOrderValues.getDouble(buffer, endian);
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeDouble);
-            cursor += sizeDouble;
-            geoRaster.skewX = ByteOrderValues.getDouble(buffer, endian);
+            // Retrieve skew values
+            input.read(buffer,0,8);
+            double skewX = ByteOrderValues.getDouble(buffer, endian);
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeDouble);
-            cursor += sizeDouble;
-            geoRaster.skewY = ByteOrderValues.getDouble(buffer, endian);
+            input.read(buffer,0,8);
+            double skewY = ByteOrderValues.getDouble(buffer, endian);
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeInt);
-            cursor += sizeInt;
-            geoRaster.srid = ByteOrderValues.getInt(buffer, endian);
+            // Retrieve the srid value
+            input.read(buffer,0,4);
+            int srid = ByteOrderValues.getInt(buffer, endian);
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeShort);
-            cursor += sizeShort;
-            geoRaster.width = getShort(buffer, endian);
+            // Retrieve width and height values
+            input.read(buffer,0,2);
+            short width = getShort(buffer, endian);
             
-            buffer = Arrays.copyOfRange(firstBytesBlob, cursor, cursor+sizeShort);
-            cursor += sizeShort;
-            geoRaster.height = getShort(buffer, endian);
-            
-            return geoRaster;
+            input.read(buffer,0,2);
+            short height = getShort(buffer, endian);
+
+            // Calculate the four points of the envelope and keep max and min values for x and y
+            double xMax = ipX;
+            double yMax = ipY;
+            double xMin = ipX;
+            double yMin = ipY;
+
+            xMax = Math.max(xMax,ipX + width*scaleX);
+            xMin = Math.min(xMin,ipX + width*scaleX);
+            yMax = Math.max(yMax,ipY + width*scaleY);
+            yMin = Math.min(yMin,ipY + width*scaleY);
+
+            xMax = Math.max(xMax,ipX + height*skewX);
+            xMin = Math.min(xMin,ipX + height*skewX);
+            yMax = Math.max(yMax,ipY + height*skewY);
+            yMin = Math.min(yMin,ipY + height*skewY);
+
+            xMax = Math.max(xMax,ipX + width*scaleX + height*skewX);
+            xMin = Math.min(xMin,ipX + width*scaleX + height*skewX);
+            yMax = Math.max(yMax,ipY + width*scaleY + height*skewY);
+            yMin = Math.min(yMin,ipY + width*scaleY + height*skewY);
+
+            return new Envelope(xMax, xMin, yMax, yMin);
+
         } catch (IOException ex) {
-            throw DbException.convertIOException(ex, null);
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
         }
+
+        return null;
     }
     
     /*
@@ -141,119 +145,5 @@ public class ValueGeoRaster extends ValueLob {
         }else{
             return (short) (((buff[1] & 0xff) << 8)|((buff[0] & 0xff)));
         }
-    }
-    
-    /*
-     * Return the index of the first byte of the wanted band given its index
-     * 
-     * @param numBandQuery the number of the band wanted
-     * 
-     * @return getIndexBand the index of the wanted band
-     */
-    public int getIndexBand(int numBandQuery){
-        if(numBandQuery<0){
-            numBandQuery=0;
-        }else if(numBandQuery>(numBands-1)){
-            numBandQuery=numBands-1;
-        }
-        
-        
-        int indexByte = 61;
-        int currBandsRead = 0;
-        byte[] buffer = new byte[1];
-        InputStream input = getInputStream();
-        
-        int sizeUnit = 0;
-        while(currBandsRead<numBandQuery){
-            try{
-                input.read(buffer, 0, 1);
-                System.out.println(buffer[0]);
-                switch(buffer[0]){
-                    case 0:
-                        // sizeUnit=1 in bit
-                    case 1:
-                        // sizeUnit=2 in bit
-                    case 2:
-                        // sizeUnit=4 in bit
-                    case 3:
-                        sizeUnit=1;
-                        break;
-                    case 4:
-                        sizeUnit=1;
-                        break;
-                    case 5:
-                        sizeUnit=2;
-                        break;
-                    case 6:
-                        sizeUnit=2;
-                        break;
-                    case 7:
-                        sizeUnit=4;
-                        break;
-                    case 8:
-                        sizeUnit=4;
-                        break;
-                    case 10:
-                        sizeUnit=4;
-                        break;
-                    case 11:
-                        sizeUnit=8;
-                        break;
-                    case 13:
-                        // Needs to throw an exception
-                }
-                System.out.println(sizeUnit);
-                input.skip((width*height+1)*sizeUnit);
-                indexByte += (width*height+1)*sizeUnit+1;
-                currBandsRead++;
-            }catch(IOException ex){
-                throw DbException.convertIOException(ex, null);
-            }
-        }
-        return indexByte;
-    }
-    
-    public short getVersion() {
-        return version;
-    }
-
-    public short getNumBands() {
-        return numBands;
-    }
-
-    public double getScaleX() {
-        return scaleX;
-    }
-
-    public double getScaleY() {
-        return scaleY;
-    }
-
-    public double getIpX() {
-        return ipX;
-    }
-
-    public double getIpY() {
-        return ipY;
-    }
-
-    public double getSkewX() {
-        return skewX;
-    }
-
-    public double getSkewY() {
-        return skewY;
-    }
-
-    public int getSrid() {
-        return srid;
-    }
-
-    public short getWidth() {
-        return width;
-    }
-
-    public short getHeight() {
-        return height;
     }
 }
