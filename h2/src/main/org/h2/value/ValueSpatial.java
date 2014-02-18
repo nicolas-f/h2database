@@ -9,11 +9,18 @@ package org.h2.value;
 import com.vividsolutions.jts.geom.Envelope;
 
 /**
+ * ValueSpatial is an interface for each Value that represents spatial objects
+ * (currently Geometry or georeferenced Raster). It defined a method that is
+ * mandatory to define a spatial index for the Value.
  *
  * @author Jules Party
  */
 public interface ValueSpatial {
 
+    /**
+     * Return the Envelope of the spatial object represented by the Value.
+     * 
+     */
     public Envelope getEnvelope();
 
 }
