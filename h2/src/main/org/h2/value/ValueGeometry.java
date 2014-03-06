@@ -109,9 +109,10 @@ public class ValueGeometry extends Value implements ValueSpatial {
      * @param r the other geometry
      * @return true if the two overlap
      */
-    public boolean intersectsBoundingBox(ValueGeometry r) {
+    @Override
+    public boolean intersectsBoundingBox(ValueSpatial r) {
         // the Geometry object caches the envelope
-        return getGeometry().getEnvelopeInternal().intersects(r.getGeometry().getEnvelopeInternal());
+        return getGeometry().getEnvelopeInternal().intersects(r.getEnvelope());
     }
 
     /**

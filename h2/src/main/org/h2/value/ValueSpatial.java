@@ -23,4 +23,13 @@ public interface ValueSpatial {
      */
     public Envelope getEnvelope();
 
+    /**
+     * Test if this spatial envelope intersects with the other spatial
+     * envelope.
+     *
+     * @param r the other geometry
+     * @return true if the two overlap
+     */
+    public boolean intersectsBoundingBox(ValueSpatial vs);
+
 }

@@ -22,7 +22,13 @@ import com.vividsolutions.jts.geom.Envelope;
  */
 public class ValueGeoRaster extends ValueLob implements ValueSpatial {
 
-    static Value get(byte[] bytesNoCopy) {
+    /**
+     * Get or create a georaster value for the given byte array.
+     *
+     * @param bytesNoCopy the byte array
+     * @return the value
+     */
+    public static Value get(byte[] bytesNoCopy) {
         InputStream bytesStream = new ByteArrayInputStream(bytesNoCopy);
         long len = bytesNoCopy.length;
         return ValueGeoRaster.createGeoRaster(bytesStream, len, null);

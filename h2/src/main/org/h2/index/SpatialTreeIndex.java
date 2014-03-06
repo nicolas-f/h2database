@@ -82,8 +82,8 @@ public class SpatialTreeIndex extends BaseIndex implements SpatialIndex {
         this.needRebuild = create;
         this.table = table;
         if (!database.isStarting()) {
-            if (columns[0].column.getType() != Value.GEOMETRY) {
-                throw DbException.getUnsupportedException("spatial index on non-geometry column, "
+            if (columns[0].column.getType() != Value.GEOMETRY && columns[0].column.getType() != Value.GEORASTER) {
+                throw DbException.getUnsupportedException("spatial index on non-spatial column, "
                         + columns[0].column.getCreateSQL());
             }
         }

@@ -17,8 +17,8 @@ import org.h2.table.TableFilter;
 import org.h2.util.New;
 import org.h2.value.Value;
 import org.h2.value.ValueBoolean;
-import org.h2.value.ValueGeometry;
 import org.h2.value.ValueNull;
+import org.h2.value.ValueSpatial;
 
 /**
  * Example comparison expressions are ID=1, NAME=NAME, NAME IS NULL.
@@ -248,9 +248,11 @@ public class Comparison extends Condition {
                 return ValueNull.INSTANCE;
             }
         }
-        int dataType = Value.getHigherOrder(left.getType(), right.getType());
-        l = l.convertTo(dataType);
-        r = r.convertTo(dataType);
+        if (!Value.isSpatialType(left.getType()) || !Value.isSpatialType(right.getType())) {
+            int dataType = Value.getHigherOrder(left.getType(), right.getType());
+            l = l.convertTo(dataType);
+            r = r.convertTo(dataType);
+        }
         boolean result = compareNotNull(database, l, r, compareType);
         return ValueBoolean.get(result);
     }
@@ -288,8 +290,8 @@ public class Comparison extends Condition {
             result = database.compare(l, r) < 0;
             break;
         case SPATIAL_INTERSECTS: {
-            ValueGeometry lg = (ValueGeometry) l.convertTo(Value.GEOMETRY);
-            ValueGeometry rg = (ValueGeometry) r.convertTo(Value.GEOMETRY);
+            ValueSpatial lg = (ValueSpatial) l.convertToSpatial();
+            ValueSpatial rg = (ValueSpatial) r.convertToSpatial();
             result = lg.intersectsBoundingBox(rg);
             break;
         }

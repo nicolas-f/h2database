@@ -174,6 +174,16 @@ public abstract class Value {
     private static final BigDecimal MIN_LONG_DECIMAL = BigDecimal.valueOf(Long.MIN_VALUE);
 
     /**
+     * Return whether the type in parameter can be used for spatial index or not.
+     *
+     * @param type the type to test
+     * @return true if type is spatial
+     */
+    public static boolean isSpatialType(int type) {
+        return (type == GEOMETRY || type == GEORASTER);
+    }
+
+    /**
      * Get the SQL expression for this value.
      *
      * @return the SQL expression
@@ -894,6 +904,19 @@ public abstract class Value {
             }
         } catch (NumberFormatException e) {
             throw DbException.get(ErrorCode.DATA_CONVERSION_ERROR_1, e, getString());
+        }
+    }
+
+    /**
+     * Compare a value to the spatial types.
+     *
+     * @return the converted value
+     */
+    public Value convertToSpatial() {
+        try {
+            return convertTo(GEOMETRY);
+        } catch (DbException e) {
+            return convertTo(GEORASTER);
         }
     }
 
