@@ -58,6 +58,221 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
     }
 
     /**
+     * Read the first bytes of the raster to get its number of bands.
+     * 
+     * @return the number of bands of this raster
+     */
+    public double getNumBands() {
+        int numBands = 0;
+        InputStream input = getInputStream();
+        byte[] buffer = new byte[8];
+
+        try {
+            // Retrieve the endian value
+            input.read(buffer, 0, 1);
+            int endian = buffer[0]==1 ? ByteOrderValues.LITTLE_ENDIAN  : ByteOrderValues.BIG_ENDIAN;
+
+            // Skip byte to numBands
+            input.skip(4);
+
+            // Retrieve numBands
+            input.read(buffer, 0, 8);
+            numBands = getUnsignedInt16(buffer, endian);
+        } catch (IOException ex) {
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+        }
+        return numBands;
+    }
+
+    /**
+     * Read the first bytes of the raster to get its scale along the X axe.
+     * 
+     * @return the scale of the georeferenced raster along the X axe
+     */
+    public double getScaleX() {
+        double scaleX = 0;
+        InputStream input = getInputStream();
+        byte[] buffer = new byte[8];
+
+        try {
+            // Retrieve the endian value
+            input.read(buffer, 0, 1);
+            int endian = buffer[0]==1 ? ByteOrderValues.LITTLE_ENDIAN  : ByteOrderValues.BIG_ENDIAN;
+
+            // Skip byte to scaleX
+            input.skip(4);
+
+            // Retrieve scaleX
+            input.read(buffer, 0, 8);
+            scaleX = ByteOrderValues.getDouble(buffer, endian);
+        } catch (IOException ex) {
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+        }
+        return scaleX;
+    }
+
+    /**
+     * Read the first bytes of the raster to get its scale along the Y axe.
+     * 
+     * @return the scale of the georeferenced raster along the Y axe
+     */
+    public double getScaleY() {
+        double scaleY = 0;
+        InputStream input = getInputStream();
+        byte[] buffer = new byte[8];
+
+        try {
+            // Retrieve the endian value
+            input.read(buffer, 0, 1);
+            int endian = buffer[0]==1 ? ByteOrderValues.LITTLE_ENDIAN  : ByteOrderValues.BIG_ENDIAN;
+
+            // Skip byte to scaleY
+            input.skip(12);
+
+            // Retrieve scaleY
+            input.read(buffer, 0, 8);
+            scaleY = ByteOrderValues.getDouble(buffer, endian);
+        } catch (IOException ex) {
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+        }
+        return scaleY;
+    }
+
+    /**
+     * Read the first bytes of the raster to get its SRID.
+     * 
+     * @return the srid of the georeferenced raster
+     */
+    public long getSRID() {
+        long srid = 0;
+        InputStream input = getInputStream();
+        byte[] buffer = new byte[4];
+
+        try {
+            // Retrieve the endian value
+            input.read(buffer, 0, 1);
+            int endian = buffer[0]==1 ? ByteOrderValues.LITTLE_ENDIAN  : ByteOrderValues.BIG_ENDIAN;
+
+            // Skip byte to the srid
+            input.skip(52);
+
+            // Retrieve the srid value
+            input.read(buffer, 0, 4);
+            srid = getUnsignedInt32(buffer, endian);
+        } catch (IOException ex) {
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+        }
+        return srid;
+    }
+
+    /**
+     * Read the first bytes of the raster to get the width of this raster.
+     * 
+     * @return the width of this raster
+     */
+    public int getWidth() {
+        int width = 0;
+        InputStream input = getInputStream();
+        byte[] buffer = new byte[2];
+
+        try {
+            // Retrieve the endian value
+            input.read(buffer, 0, 1);
+            int endian = buffer[0]==1 ? ByteOrderValues.LITTLE_ENDIAN  : ByteOrderValues.BIG_ENDIAN;
+
+            // Skip byte to width
+            input.skip(56);
+
+            // Retrieve width
+            input.read(buffer, 0, 2);
+            width = getUnsignedInt16(buffer, endian);
+        } catch (IOException ex) {
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+        }
+        return width;
+    }
+
+    /**
+     * Read the first bytes of the raster to get the height of this raster.
+     * 
+     * @return the height of this raster
+     */
+    public int getHeight() {
+        int height = 0;
+        InputStream input = getInputStream();
+        byte[] buffer = new byte[2];
+
+        try {
+            // Retrieve the endian value
+            input.read(buffer, 0, 1);
+            int endian = buffer[0]==1 ? ByteOrderValues.LITTLE_ENDIAN  : ByteOrderValues.BIG_ENDIAN;
+
+            // Skip byte to height
+            input.skip(58);
+
+            // Retrieve height
+            input.read(buffer, 0, 2);
+            height = getUnsignedInt16(buffer, endian);
+        } catch (IOException ex) {
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+        }
+        return height;
+    }
+
+    /**
+     * Read the first bytes of the raster to get the pixels' type used in this
+     * raster.
+     *
+     * @return the pixels' type of this raster
+     */
+    public String getPixelType() {
+        InputStream input = getInputStream();
+        byte[] buffer = new byte[2];
+
+        try {
+            // Retrieve the endian value
+            input.read(buffer, 0, 1);
+            int endian = buffer[0]==1 ? ByteOrderValues.LITTLE_ENDIAN  : ByteOrderValues.BIG_ENDIAN;
+
+            // Skip byte to the pixel type
+            input.skip(60);
+
+            // Retrieve pixel type
+            input.read(buffer, 0, 1);
+            int pixType = (buffer[0] & 0x0f);
+            switch (pixType) {
+                case 0:
+                    return "1BB";
+                case 1:
+                    return "2BUI";
+                case 2:
+                    return "4BUI";
+                case 3:
+                    return "8BSI";
+                case 4:
+                    return "8BUI";
+                case 5:
+                    return "16BSI";
+                case 6:
+                    return "16BUI";
+                case 7:
+                    return "32BSI";
+                case 8:
+                    return "32BUI";
+                case 10:
+                    return "32BF";
+                case 11:
+                    return "64BF";
+                default:
+                    return "Unknown";
+            }
+        } catch (IOException ex) {
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+        }
+        return null;
+    }
+
+    /**
      * Create an envelope based on the inputstream of the georaster
      *
      * @return the envelope of the georaster
@@ -99,7 +314,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
             
             // Retrieve the srid value
             input.read(buffer,0,4);
-            int srid = ByteOrderValues.getInt(buffer, endian);
+            long srid = getUnsignedInt32(buffer, endian);
             
             // Retrieve width and height values
             input.read(buffer,0,2);
@@ -152,5 +367,44 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
         }else{
             return (short) (((buff[1] & 0xff) << 8)|((buff[0] & 0xff)));
         }
+    }
+
+    /**
+     * Convert an given array of bytes into a unsigned int 32 bits (represented
+     * by a long in Java) by precising the value of endian
+     *
+     * @param buff the array of bytes to convert
+     * @param endian 2 for little endian and 1 for big endian
+     *
+     * @return long the result of the conversion
+     */
+    private static long getUnsignedInt32(byte[] buff, int endian) {
+        long result = ByteOrderValues.getInt(buff, endian);
+        if (result < 0) {
+            result = result + 2*(Integer.MAX_VALUE+1);
+        }
+        return result;
+    }
+
+    /**
+     * Convert an given array of bytes into a unsigned int 16 bits (represented
+     * by an int in Java) by precising the value of endian
+     *
+     * @param buff the array of bytes to convert
+     * @param endian 2 for little endian and 1 for big endian
+     *
+     * @return long the result of the conversion
+     */
+    private static int getUnsignedInt16(byte[] buff, int endian) {
+        int result = getShort(buff, endian);
+        if (result < 0) {
+            result = result + 2*(Short.MAX_VALUE+1);
+        }
+        return result;
+    }
+
+    @Override
+    public boolean intersectsBoundingBox(ValueSpatial vs) {
+        return getEnvelope().intersects(vs.getEnvelope());
     }
 }
