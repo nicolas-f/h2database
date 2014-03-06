@@ -194,10 +194,14 @@ public class TestGeoRaster extends TestBase {
         long len = bytes.length;
         ValueGeoRaster testRaster = ValueGeoRaster.createGeoRaster(bytesStream, len, null);
         Envelope env = testRaster.getEnvelope();
-        assertEquals(env.getMinX(), 0.5);
-        assertEquals(env.getMinY(), 0.5);
-        assertEquals(env.getMaxX(), 20.5);
-        assertEquals(env.getMaxY(), 30.5);
+        assertEquals(0.5, env.getMinX());
+        assertEquals(0.5, env.getMinY());
+        assertEquals(20.5, env.getMaxX());
+        assertEquals(30.5, env.getMaxY());
+        assertEquals(2, testRaster.getScaleX());
+        assertEquals(3, testRaster.getScaleY());
+        assertEquals(10, testRaster.getWidth());
+        assertEquals(20, testRaster.getHeight());
     }
 
     public void testGeoRasterWithBands() throws Exception {
@@ -210,7 +214,7 @@ public class TestGeoRaster extends TestBase {
                 + "0000000077195641"
                 + "0000000000000000"
                 + "0000000000000000"
-                + "FFFFFFFF"
+                + "E6100000"
                 + "0500"
                 + "0500"
                 + "04"
@@ -245,6 +249,7 @@ public class TestGeoRaster extends TestBase {
         assertEquals(env.getMinY(), 5793243.75);
         assertEquals(env.getMaxX(), 3427928);
         assertEquals(env.getMaxY(), 5793244);
+        assertEquals(testRaster.getSRID(), 4326);
     }
     
     public static byte[] hexStringToByteArray(String s) {
@@ -252,7 +257,7 @@ public class TestGeoRaster extends TestBase {
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
             data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
-                                 + Character.digit(s.charAt(i+1), 16));
+                                + Character.digit(s.charAt(i+1), 16));
         }
         return data;
     }
