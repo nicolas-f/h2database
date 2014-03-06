@@ -1,4 +1,9 @@
-
+/*
+ * Copyright 2004-2013 H2 Group. Multiple-Licensed under the H2 License,
+ * Version 1.0, and under the Eclipse Public License, Version 1.0
+ * (http://h2database.com/html/license.html).
+ * Initial Developer: H2 Group
+ */
 package org.h2.test.db;
 
 import com.vividsolutions.jts.geom.Envelope;
@@ -30,6 +35,7 @@ public class TestGeoRaster extends TestBase {
         testGeoRasterWithBands();
         testReadRaster();
         testWriteRasterFromString();
+        testSpatialIndex();
     }
  
    
@@ -93,6 +99,81 @@ public class TestGeoRaster extends TestBase {
         conn.close();
     }
     
+    private void testSpatialIndex() throws Exception {
+        deleteDb("georaster");
+
+        String bytesString = "01"
+                + "0000"
+                + "0000"
+                + "000000000000F03F"
+                + "000000000000F03F"
+                + "0000000000000000"
+                + "0000000000000000"
+                + "0000000000000000"
+                + "0000000000000000"
+                + "00000000"
+                + "0a00"
+                + "0a00";
+        byte[] bytes = hexStringToByteArray(bytesString);
+        InputStream bytesStream1 = new ByteArrayInputStream(bytes);
+
+        bytesString = "01"
+                + "0000"
+                + "0000"
+                + "000000000000F03F"
+                + "000000000000F03F"
+                + "0000000000001440"
+                + "0000000000001440"
+                + "0000000000000000"
+                + "0000000000000000"
+                + "00000000"
+                + "0a00"
+                + "0a00";
+        bytes = hexStringToByteArray(bytesString);
+        InputStream bytesStream2 = new ByteArrayInputStream(bytes);
+
+        bytesString = "01"
+                + "0000"
+                + "0000"
+                + "000000000000F03F"
+                + "000000000000F03F"
+                + "0000000000002440"
+                + "0000000000001440"
+                + "0000000000000000"
+                + "0000000000000000"
+                + "00000000"
+                + "0a00"
+                + "0a00";
+        bytes = hexStringToByteArray(bytesString);
+        InputStream bytesStream3 = new ByteArrayInputStream(bytes);
+
+        Connection conn;
+        conn = getConnection("georaster");
+        Statement stat = conn.createStatement();
+        stat.execute("create table test(id identity, data georaster)");
+
+        PreparedStatement prep = conn.prepareStatement(
+                "insert into test values(null, ?)");
+        prep.setBinaryStream(1, bytesStream1, -1);
+        prep.execute();
+        prep.setBinaryStream(1, bytesStream2, -1);
+        prep.execute();
+        prep.setBinaryStream(1, bytesStream3, -1);
+        prep.execute();
+
+        Statement stat2 = conn.createStatement();
+        stat2.execute("create spatial index on test(data)");
+
+        ResultSet rs = stat.executeQuery(
+                "select * from test " +
+                "where data && 'POINT (1.5 1.5)'::Geometry");
+        assertTrue(rs.next());
+        assertEquals(1, rs.getInt("id"));
+        assertFalse(rs.next());
+        rs.close();
+        conn.close();
+    }
+
     public void testEmptyGeoRaster() throws Exception {
         String bytesString = "01"
                 + "0000"
