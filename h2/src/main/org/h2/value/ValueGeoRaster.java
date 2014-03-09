@@ -36,7 +36,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
 
 
     /**
-     * Create a GeoRaster from a value lob
+     * Create a GeoRaster from a value lob.
      * 
      */
     private ValueGeoRaster (ValueLob v){
@@ -45,6 +45,33 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
         hash = v.hash;
     }
     
+    /**
+     * Create an empty GeoRaster with given parameters.
+     *
+     * @param width the width of the GeoRaster (in pixels)
+     * @param height the height of the GeoRaster (in pixels)
+     *
+     * @return an empty GeoRaster of given dimension.
+     */
+    public static ValueGeoRaster createEmptyGeoRaster(double scaleX, double scaleY,
+            double ipX, double ipY, double skewX, double skewY, long srid,
+            int width, int height) {
+        String hexaRast = "0000000000";
+        hexaRast += doubleToHex(scaleX);
+        hexaRast += doubleToHex(scaleY);
+        hexaRast += doubleToHex(ipX);
+        hexaRast += doubleToHex(ipY);
+        hexaRast += doubleToHex(skewX);
+        hexaRast += doubleToHex(skewX);
+        hexaRast += uint32ToHex(srid);
+        hexaRast += uint16ToHex(width);
+        hexaRast += uint16ToHex(height);
+        byte[] bytes = hexStringToByteArray(hexaRast);
+        InputStream bytesStream = new ByteArrayInputStream(bytes);
+        long len = bytes.length;
+        return ValueGeoRaster.createGeoRaster(bytesStream, len, null);
+    }
+
     /**
      * Create a GeoRaster from a given byte input stream
      * 
@@ -401,6 +428,52 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
             result = result + 2*(Short.MAX_VALUE+1);
         }
         return result;
+    }
+
+    private static String doubleToHex(double value) {
+        long valueAsLong = Double.doubleToRawLongBits(value);
+        String hexaValue = Long.toHexString(valueAsLong);
+        while (hexaValue.length() < 16) {
+            hexaValue = "0" + hexaValue;
+        }
+        return hexaValue;
+    }
+
+    private static String uint32ToHex(long value) {
+        if (value < 0 || value > 2 * ((long) Integer.MAX_VALUE) + 1) {
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "Error in argument : " + value + " is not a valid unsigned integer 32 bits. It should be include between 0 and " + 2 * Integer.MAX_VALUE + 1 + ".");
+        }
+        String hexaValue = Long.toHexString(value);
+        while (hexaValue.length() < 8) {
+            hexaValue = "0" + hexaValue;
+        }
+        return hexaValue;
+    }
+
+    private static String uint16ToHex(int value) {
+        if (value < 0 || value > 2 * ((int) Short.MAX_VALUE) + 1) {
+            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "Error in argument : " + value + " is not a valid unsigned integer 16 bits value. It should be include between 0 and " + 2*Short.MAX_VALUE + 1 + ".");
+        }
+        String hexaValue = Long.toHexString(value);
+        while (hexaValue.length() < 4) {
+            hexaValue = "0" + hexaValue;
+        }
+        return hexaValue;
+    }
+
+    public static byte[] hexStringToByteArray(String s) {
+        int len = s.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                                + Character.digit(s.charAt(i+1), 16));
+        }
+        return data;
+    }
+
+    @Override
+    public int getType() {
+        return Value.GEORASTER;
     }
 
     @Override

@@ -77,7 +77,7 @@ public class TestGeoRaster extends TestBase {
                 + "0a00"
                 + "1400";
         
-        byte[] bytes = hexStringToByteArray(bytesString);
+        byte[] bytes = ValueGeoRaster.hexStringToByteArray(bytesString);
         
         InputStream bytesStream = new ByteArrayInputStream(bytes);
         
@@ -114,7 +114,7 @@ public class TestGeoRaster extends TestBase {
                 + "00000000"
                 + "0a00"
                 + "0a00";
-        byte[] bytes = hexStringToByteArray(bytesString);
+        byte[] bytes = ValueGeoRaster.hexStringToByteArray(bytesString);
         InputStream bytesStream1 = new ByteArrayInputStream(bytes);
 
         bytesString = "01"
@@ -129,7 +129,7 @@ public class TestGeoRaster extends TestBase {
                 + "00000000"
                 + "0a00"
                 + "0a00";
-        bytes = hexStringToByteArray(bytesString);
+        bytes = ValueGeoRaster.hexStringToByteArray(bytesString);
         InputStream bytesStream2 = new ByteArrayInputStream(bytes);
 
         bytesString = "01"
@@ -144,7 +144,7 @@ public class TestGeoRaster extends TestBase {
                 + "00000000"
                 + "0a00"
                 + "0a00";
-        bytes = hexStringToByteArray(bytesString);
+        bytes = ValueGeoRaster.hexStringToByteArray(bytesString);
         InputStream bytesStream3 = new ByteArrayInputStream(bytes);
 
         Connection conn;
@@ -175,24 +175,7 @@ public class TestGeoRaster extends TestBase {
     }
 
     public void testEmptyGeoRaster() throws Exception {
-        String bytesString = "01"
-                + "0000"
-                + "0000"
-                + "0000000000000040"
-                + "0000000000000840"
-                + "000000000000e03F"
-                + "000000000000e03F"
-                + "0000000000000000"
-                + "0000000000000000"
-                + "00000000"
-                + "0a00"
-                + "1400";
-        
-        byte[] bytes = hexStringToByteArray(bytesString);
-        
-        InputStream bytesStream = new ByteArrayInputStream(bytes);
-        long len = bytes.length;
-        ValueGeoRaster testRaster = ValueGeoRaster.createGeoRaster(bytesStream, len, null);
+        ValueGeoRaster testRaster = ValueGeoRaster.createEmptyGeoRaster(2,3,0.5,0.5,0,0,0,10,20);
         Envelope env = testRaster.getEnvelope();
         assertEquals(0.5, env.getMinX());
         assertEquals(0.5, env.getMinY());
@@ -239,7 +222,7 @@ public class TestGeoRaster extends TestBase {
                 + "4D566DA4CB"
                 + "3E454C5665";
         
-        byte[] bytes = hexStringToByteArray(bytesString);
+        byte[] bytes = ValueGeoRaster.hexStringToByteArray(bytesString);
         
         InputStream bytesStream = new ByteArrayInputStream(bytes);
         long len = bytes.length;
@@ -250,15 +233,5 @@ public class TestGeoRaster extends TestBase {
         assertEquals(env.getMaxX(), 3427928);
         assertEquals(env.getMaxY(), 5793244);
         assertEquals(testRaster.getSRID(), 4326);
-    }
-    
-    public static byte[] hexStringToByteArray(String s) {
-        int len = s.length();
-        byte[] data = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
-                                + Character.digit(s.charAt(i+1), 16));
-        }
-        return data;
     }
 }
