@@ -388,7 +388,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
      * 
      * @return short the result of the conversion
      */
-    private static short getShort(byte[] buff, int endian){
+    public static short getShort(byte[] buff, int endian){
         if(endian==1){
             return (short) (((buff[0] & 0xff) << 8)|((buff[1] & 0xff)));
         }else{
@@ -405,7 +405,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
      *
      * @return long the result of the conversion
      */
-    private static long getUnsignedInt32(byte[] buff, int endian) {
+    public static long getUnsignedInt32(byte[] buff, int endian) {
         long result = ByteOrderValues.getInt(buff, endian);
         if (result < 0) {
             result = result + 2*(Integer.MAX_VALUE+1);

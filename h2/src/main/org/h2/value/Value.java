@@ -808,7 +808,7 @@ public abstract class Value {
             case GEORASTER: {
                 switch(getType()) {
                 case BYTES:
-                    return ValueGeoRaster.get(getBytesNoCopy());
+                    return ValueLobDb.createSmallLob(Value.BLOB, getBytesNoCopy());
                 }
                 break;
             }
@@ -886,7 +886,7 @@ public abstract class Value {
             case BLOB:
                 return ValueLobDb.createSmallLob(BLOB, StringUtils.convertHexToBytes(s.trim()));
             case GEORASTER:
-                return ValueGeoRaster.get(StringUtils.convertHexToBytes(s.trim()));
+                return ValueLobDb.createSmallLob(GEORASTER, StringUtils.convertHexToBytes(s.trim()));
             case ARRAY:
                 return ValueArray.get(new Value[]{ValueString.get(s)});
             case RESULT_SET: {
@@ -1161,6 +1161,10 @@ public abstract class Value {
      */
     public interface ValueBlob {
         // this is a marker interface
+    }
+
+    public interface ValueRaster {
+
     }
 
 }
