@@ -713,7 +713,7 @@ public class ValueLobDb extends Value implements Value.ValueClob, Value.ValueBlo
             return new Envelope(xMax, xMin, yMax, yMin);
 
         } catch (IOException ex) {
-            throw DbException.throwInternalError("H2 is unable to read the raster.");
+            throw DbException.throwInternalError("H2 is unable to read the raster. " + ex.getMessage());
         }
         }
         throw DbException.throwInternalError("The envelope can be computed only for GeoRaster type.");

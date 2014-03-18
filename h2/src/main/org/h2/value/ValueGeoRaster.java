@@ -10,8 +10,7 @@ import com.vividsolutions.jts.io.ByteOrderValues;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.h2.message.DbException;
 import org.h2.store.DataHandler;
 
 import com.vividsolutions.jts.geom.Envelope;
@@ -38,6 +37,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
     /**
      * Create a GeoRaster from a value lob.
      * 
+     * @param v the ValueLob containing the data of the raster
      */
     private ValueGeoRaster (ValueLob v){
         super(v.type , v.handler, v.fileName, v.tableId, v.objectId, v.linked, v.precision, v.compressed);
@@ -62,7 +62,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
         hexaRast += doubleToHex(ipX);
         hexaRast += doubleToHex(ipY);
         hexaRast += doubleToHex(skewX);
-        hexaRast += doubleToHex(skewX);
+        hexaRast += doubleToHex(skewY);
         hexaRast += uint32ToHex(srid);
         hexaRast += uint16ToHex(width);
         hexaRast += uint16ToHex(height);
@@ -106,7 +106,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
             input.read(buffer, 0, 8);
             numBands = getUnsignedInt16(buffer, endian);
         } catch (IOException ex) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+            throw DbException.throwInternalError("H2 is unable to read the raster. " + ex.getMessage());
         }
         return numBands;
     }
@@ -133,7 +133,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
             input.read(buffer, 0, 8);
             scaleX = ByteOrderValues.getDouble(buffer, endian);
         } catch (IOException ex) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+            throw DbException.throwInternalError("H2 is unable to read the raster. " + ex.getMessage());
         }
         return scaleX;
     }
@@ -160,7 +160,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
             input.read(buffer, 0, 8);
             scaleY = ByteOrderValues.getDouble(buffer, endian);
         } catch (IOException ex) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+            throw DbException.throwInternalError("H2 is unable to read the raster. " + ex.getMessage());
         }
         return scaleY;
     }
@@ -187,7 +187,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
             input.read(buffer, 0, 4);
             srid = getUnsignedInt32(buffer, endian);
         } catch (IOException ex) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+            throw DbException.throwInternalError("H2 is unable to read the raster. " + ex.getMessage());
         }
         return srid;
     }
@@ -214,7 +214,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
             input.read(buffer, 0, 2);
             width = getUnsignedInt16(buffer, endian);
         } catch (IOException ex) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+            throw DbException.throwInternalError("H2 is unable to read the raster. " + ex.getMessage());
         }
         return width;
     }
@@ -241,7 +241,7 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
             input.read(buffer, 0, 2);
             height = getUnsignedInt16(buffer, endian);
         } catch (IOException ex) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+            throw DbException.throwInternalError("H2 is unable to read the raster. " + ex.getMessage());
         }
         return height;
     }
@@ -294,9 +294,8 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
                     return "Unknown";
             }
         } catch (IOException ex) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+            throw DbException.throwInternalError("H2 is unable to read the raster. " + ex.getMessage());
         }
-        return null;
     }
 
     /**
@@ -374,10 +373,8 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
             return new Envelope(xMax, xMin, yMax, yMin);
 
         } catch (IOException ex) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "H2 is unable to read the raster.", ex);
+            throw DbException.throwInternalError("H2 is unable to read the raster. " + ex.getMessage());
         }
-
-        return null;
     }
 
     /**
@@ -430,6 +427,13 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
         return result;
     }
 
+    /**
+     * Convert a double into its hexadecimal representation (with big endian
+     * convention).
+     *
+     * @param value the double to convert
+     * @return hexadecimal String representation of the double, with a fix length of 16
+     */
     private static String doubleToHex(double value) {
         long valueAsLong = Double.doubleToRawLongBits(value);
         String hexaValue = Long.toHexString(valueAsLong);
@@ -439,9 +443,17 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
         return hexaValue;
     }
 
+    /**
+     * Convert a long reprensenting an unsigned integer 32 bits into its
+     * hexadecimal representation (with big endian convention).
+     *
+     * @param value the long (uint32) to convert
+     * @return hexadecimal String representation of the uint32, with a fix
+     * length of 8
+     */
     private static String uint32ToHex(long value) {
         if (value < 0 || value > 2 * ((long) Integer.MAX_VALUE) + 1) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "Error in argument : " + value + " is not a valid unsigned integer 32 bits. It should be include between 0 and " + 2 * Integer.MAX_VALUE + 1 + ".");
+            throw DbException.throwInternalError("Error in argument : " + value + " is not a valid unsigned integer 32 bits. It should be include between 0 and " + 2 * Integer.MAX_VALUE + 1 + ".");
         }
         String hexaValue = Long.toHexString(value);
         while (hexaValue.length() < 8) {
@@ -450,9 +462,17 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
         return hexaValue;
     }
 
+    /**
+     * Convert an int reprensenting an unsigned integer 16 bits into its
+     * hexadecimal representation (with big endian convention).
+     *
+     * @param value the long (uint32) to convert
+     * @return hexadecimal String representation of the uint32, with a fix
+     * length of 4
+     */
     private static String uint16ToHex(int value) {
         if (value < 0 || value > 2 * ((int) Short.MAX_VALUE) + 1) {
-            Logger.getLogger(ValueGeoRaster.class.getName()).log(Level.SEVERE, "Error in argument : " + value + " is not a valid unsigned integer 16 bits value. It should be include between 0 and " + 2*Short.MAX_VALUE + 1 + ".");
+            throw DbException.throwInternalError("Error in argument : " + value + " is not a valid unsigned integer 16 bits value. It should be include between 0 and " + 2*Short.MAX_VALUE + 1 + ".");
         }
         String hexaValue = Long.toHexString(value);
         while (hexaValue.length() < 4) {
@@ -461,8 +481,17 @@ public class ValueGeoRaster extends ValueLob implements ValueSpatial {
         return hexaValue;
     }
 
+    /**
+     * Convert a haxadecimal String into the equivalent byte array.
+     *
+     * @param s the string to tansform
+     * @return the equivalent byte array
+     */
     public static byte[] hexStringToByteArray(String s) {
         int len = s.length();
+        if (len % 2 != 0) {
+            throw DbException.throwInternalError("The length of an hexadecimal string must be an even number.");
+        }
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
             data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
