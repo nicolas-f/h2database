@@ -31,6 +31,12 @@ public class TestGeoRaster extends TestBase {
     
     @Override
     public void test() throws Exception {
+        if (!config.mvStore && config.mvcc) {
+            return;
+        }
+        if (config.memory && config.mvcc) {
+            return;
+        }
         testEmptyGeoRaster();
         testGeoRasterWithBands();
         testReadRaster();
