@@ -37,6 +37,7 @@ import org.h2.value.ValueLong;
 
 import com.vividsolutions.jts.geom.Envelope;
 import com.vividsolutions.jts.geom.Geometry;
+import org.h2.value.ValueSpatial;
 
 /**
  * This is an index based on a MVRTreeMap.
@@ -82,7 +83,7 @@ public class MVSpatialIndex extends BaseIndex implements SpatialIndex, MVIndex {
         if ((col.sortType & SortOrder.NULLS_LAST) != 0) {
             throw DbException.getUnsupportedException("Nulls last is not supported");
         }
-        if (col.column.getType() != Value.GEOMETRY) {
+        if (col.column.getType() != Value.GEOMETRY && col.column.getType() != Value.GEORASTER) {
             throw DbException.getUnsupportedException("Spatial index on non-geometry column, "
                     + col.column.getCreateSQL());
         }
@@ -162,11 +163,14 @@ public class MVSpatialIndex extends BaseIndex implements SpatialIndex, MVIndex {
             return null;
         }
         Value v = r.getValue(columnIds[0]);
-        Geometry g = ((ValueGeometry) v.convertTo(Value.GEOMETRY)).getGeometry();
-        Envelope env = g.getEnvelopeInternal();
-        return new SpatialKey(r.getKey(),
+        if(v instanceof ValueSpatial) {
+            ValueSpatial vs = (ValueSpatial) v;
+            Envelope env = vs.getEnvelope();
+            return new SpatialKey(r.getKey(),
                 (float) env.getMinX(), (float) env.getMaxX(),
                 (float) env.getMinY(), (float) env.getMaxY());
+        }
+        return null;
     }
 
     @Override

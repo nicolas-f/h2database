@@ -409,6 +409,7 @@ public class Transfer {
         case Value.STRING_FIXED:
             writeString(v.getString());
             break;
+        case Value.GEORASTER:
         case Value.BLOB: {
             if (version >= Constants.TCP_PROTOCOL_VERSION_11) {
                 if (v instanceof ValueLobDb) {
@@ -579,6 +580,7 @@ public class Transfer {
             return ValueStringIgnoreCase.get(readString());
         case Value.STRING_FIXED:
             return ValueStringFixed.get(readString());
+        case Value.GEORASTER:
         case Value.BLOB: {
             long length = readLong();
             if (version >= Constants.TCP_PROTOCOL_VERSION_11) {
