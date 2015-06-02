@@ -11,12 +11,15 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.h2.api.ErrorCode;
 import org.h2.engine.Database;
 import org.h2.jdbc.JdbcConnection;
 import org.h2.test.TestBase;
 import org.h2.util.JdbcUtils;
+
+import javax.swing.*;
 
 /**
  * Tests simulated power off conditions.
@@ -38,7 +41,7 @@ public class TestPowerOff extends TestBase {
     }
 
     @Override
-    public void test() throws SQLException {
+    public void test() throws SQLException, InterruptedException {
         if (config.memory) {
             return;
         }
@@ -56,6 +59,7 @@ public class TestPowerOff extends TestBase {
         testShutdown();
         testMemoryTables();
         testPersistentTables();
+        testThreadKill();
         deleteDb(dir, DB_NAME);
     }
 
@@ -349,4 +353,62 @@ public class TestPowerOff extends TestBase {
         return state;
     }
 
+    public void testThreadKill() throws SQLException, InterruptedException {
+        // Error may be raised only when thread kill a write operation.
+        deleteDb("threadkill");
+
+        AtomicBoolean started = new AtomicBoolean(false);
+        KilledThread killedThread = new KilledThread(this, started);
+        killedThread.execute();
+        while(!started.get()) {
+            Thread.sleep(5);
+        }
+        Thread.sleep(150);
+        killedThread.cancel(true);
+        Thread.sleep(150);
+
+        // Now check if database is corrupted
+        Connection conn = getConnection("threadkill");
+        try {
+            Statement st = conn.createStatement();
+            st.execute("SET WRITE_DELAY 0");
+            st.execute("DROP TABLE IF EXISTS TESTTABLE");
+            st.execute("CREATE TABLE TESTTABLE(id serial, X int) as select null, X from system_range(0, 10);");
+            ResultSet rs = st.executeQuery("SELECT XV FROM BIGTABLE");
+            assertTrue(rs.next());
+            rs.close();
+        } finally {
+            conn.close();
+        }
+    }
+
+    /**
+     * It says swing but it does not request active display to work.
+     * This thread must run a long query that write data on disk.
+     */
+    private static class KilledThread extends SwingWorker {
+        private TestBase testBase;
+        private AtomicBoolean startExec;
+
+        public KilledThread(TestBase testBase, AtomicBoolean startExec) {
+            this.testBase = testBase;
+            this.startExec = startExec;
+        }
+
+        @Override
+        protected Object doInBackground() throws Exception {
+            Connection connection = testBase.getConnection("threadkill");
+            try {
+                Statement st = connection.createStatement();
+                st.execute("SET WRITE_DELAY 0");
+                st.execute("DROP TABLE IF EXISTS BIGTABLE");
+                startExec.set(true);
+                st.execute("CREATE TABLE BIGTABLE AS SELECT (X*X)::varchar xv FROM SYSTEM_RANGE(0, 200000)");
+            } finally {
+                connection.close();
+                startExec.set(false);
+            }
+            return null;
+        }
+    }
 }
