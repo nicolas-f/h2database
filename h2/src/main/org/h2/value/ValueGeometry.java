@@ -30,7 +30,7 @@ import com.vividsolutions.jts.io.WKTWriter;
  * @author Noel Grandin
  * @author Nicolas Fortin, Atelier SIG, IRSTV FR CNRS 24888
  */
-public class ValueGeometry extends Value {
+public class ValueGeometry extends Value implements ValueSpatial {
 
     /**
      * As conversion from/to WKB cost a significant amount of CPU cycles, WKB
