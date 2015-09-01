@@ -161,10 +161,10 @@ public class ValueGeometry extends Value implements ValueSpatial {
      * @param r the other geometry
      * @return true if the two overlap
      */
-    public boolean intersectsBoundingBox(ValueGeometry r) {
+    public boolean intersectsBoundingBox(ValueSpatial r) {
         // the Geometry object caches the envelope
         return getGeometryNoCopy().getEnvelopeInternal().intersects(
-                r.getGeometryNoCopy().getEnvelopeInternal());
+                r.getEnvelope());
     }
 
     /**
@@ -178,6 +178,11 @@ public class ValueGeometry extends Value implements ValueSpatial {
         Envelope mergedEnvelope = new Envelope(getGeometryNoCopy().getEnvelopeInternal());
         mergedEnvelope.expandToInclude(r.getGeometryNoCopy().getEnvelopeInternal());
         return get(gf.toGeometry(mergedEnvelope));
+    }
+
+    @Override
+    public Envelope getEnvelope() {
+        return getGeometryNoCopy().getEnvelopeInternal();
     }
 
     @Override
