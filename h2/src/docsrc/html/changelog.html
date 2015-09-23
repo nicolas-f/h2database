@@ -24,6 +24,12 @@ Change Log
 <li>MVStore CLOB and BLOB larger than about 25 MB: An exception could be thrown
     when using the MVStore storage.
 </li>
+    <li>Add a new column type Raster. Based on Blob storage, this type is
+        spatially enabled and store Image data using the PostGIS WKB Raster.
+        Add raster functions ST_METADATA, ST_RASTERFROMIMAGE
+        Contribution by Nicolas Fortin
+        (LAB-STICC ECN)
+    <li/>
 </ul>
 
 <h2>Version 1.4.189 Beta (2015-09-13)</h2>
@@ -123,6 +129,7 @@ of the old format (MM-dd HH:mm:ss). Patch by Richard Bull.
 </li>
 <li>Oracle compatibility: empty strings were not converted to NULL when using prepared statements.
 </li><li>PostgreSQL compatibility: new syntax "create index ... using ...".
+    Contribution by Erwan Bocher (Atelier SIG, IRSTV FR CNRS 2488)
 </li><li>There was a bug in DataType.convertToValue when reading a ResultSet from a ResultSet.
 </li><li>Pull request #116: Improved concurrency in the trace system.
 </li><li>Issue 609: the spatial index did not support NULL.
@@ -511,7 +518,8 @@ of the old format (MM-dd HH:mm:ss). Patch by Richard Bull.
 </li><li>The stack trace of the exception "The object is already closed" is no longer logged by default.
 </li><li>If a value of a result set was itself a result set, the result
     could only be read once.
-</li><li>Column constraints are also visible in views (patch from Nicolas Fortin for H2GIS).
+</li><li>Column constraints are also visible in views.Contribution by Nicolas Fortin (Atelier SIG, IRSTV
+    FR CNRS 2488)
 </li><li>Granting a additional right to a role that already had a right for that table was not working.
 </li><li>Spatial index: a few bugs have been fixed (using spatial constraints in views,
     transferring geometry objects over TCP/IP, the returned geometry object is copied when needed).
@@ -523,7 +531,8 @@ of the old format (MM-dd HH:mm:ss). Patch by Richard Bull.
 </li><li>H2 Console: auto-complete did not work with multi-line statements.
 </li><li>CLOB and BLOB data was not immediately removed after a rollback.
 </li><li>There is a new Aggregate API that supports the internal H2 data types
-    (GEOMETRY for example). Thanks a lot to Nicolas Fortin for the patch!
+    (GEOMETRY for example). Contribution by Nicolas Fortin (Atelier SIG, IRSTV
+    FR CNRS 2488)
 </li><li>Referential integrity constraints sometimes used the wrong index,
     such that updating a row in the referenced table incorrectly failed with
     a constraint violation.
@@ -550,7 +559,8 @@ of the old format (MM-dd HH:mm:ss). Patch by Richard Bull.
 </li><li>Support some more DDL syntax for MySQL, patch from Peter Jentsch.
 </li><li>Issue 548: TO_CHAR does not format MM and DD correctly when the month or day of
     the month is 1 digit, patch from "the.tucc"
-</li><li>Fix bug in varargs support in ALIAS's, patch from Nicolas Fortin
+</li><li>Fix bug in varargs support in ALIAS's.Contribution by Nicolas Fortin (Atelier SIG, IRSTV
+    FR CNRS 2488)
 </li></ul>
 
 <!-- [close] { --></div></td></tr></table><!-- } --><!-- analytics --></body></html>

@@ -15,7 +15,7 @@ import org.h2.value.DataType;
 /**
  * Tests the "create index ... using" syntax.
  *
- * @author Erwan Bocher Atelier SIG, IRSTV FR CNRS 2488
+ * @author Erwan Bocher
  */
 public class TestUsingIndex extends TestBase {
 

@@ -35,7 +35,7 @@ import org.h2.value.ValueGeometry;
  *
  * @author Thomas Mueller
  * @author Noel Grandin
- * @author Nicolas Fortin, Atelier SIG, IRSTV FR CNRS 24888
+ * @author Nicolas Fortin
  */
 public class TestSpatial extends TestBase {
 
