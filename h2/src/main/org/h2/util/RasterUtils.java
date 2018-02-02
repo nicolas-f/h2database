@@ -76,6 +76,38 @@ public class RasterUtils {
     }
 
     /**
+     * Add a new band to an existing Raster object
+     * @param value
+     * @param meta
+     * @param session Database session, can be null. If null, new raster is stored in memory.
+     * @return
+     * @throws IOException
+     */
+    public static Value addEmptyBand(Value value, RasterBandMetaData meta, Session session) throws IOException {
+        RasterMetaData o = value.getMetaData();
+        RasterBandMetaData[] allBands = new RasterBandMetaData[o.bands.length + 1];
+        // Copy existing bands
+        System.arraycopy(o.bands, 0, allBands, 0, o.bands.length);
+        allBands[allBands.length - 1] = meta;
+        RasterMetaData metaData = new RasterMetaData(o.endian, o.version, o.numBands + 1, o.scaleX, o.scaleY,
+                o.ipX, o.ipY, o.skewX, o.skewY, o.srid, o.width, o.height, allBands);
+
+
+        if (session != null) {
+            return session.getDataHandler().getLobStorage().createRaster
+                    (GeoRasterRenderedImage
+                            .create(, metaData,
+                                    Double.NaN).asWKBRaster(), -1);
+        } else {
+            return ValueLobDb.createSmallLob(Value.RASTER,
+                    IOUtils.readBytesAndClose(GeoRasterRenderedImage
+                            .create(image, scaleX, scaleY, upperLeftX,
+                                    upperLeftY, skewX, skewY, srid,
+                                    Double.NaN).asWKBRaster(), -1));
+        }
+    }
+
+    /**
      * Convert a raster into an Image using ImageIO ImageWriter.
      * @param value Raster
      * @param suffix Image suffix ex:png
@@ -240,7 +272,7 @@ public class RasterUtils {
     /**
      * Raster band pixel type
      */
-    public static enum PixelType {
+    public enum PixelType {
         PT_1BB(0, 1),     /* 1-bit boolean            */
         PT_2BUI(1, 1),    /* 2-bit unsigned integer   */
         PT_4BUI(2, 1),    /* 4-bit unsigned integer   */
@@ -271,7 +303,7 @@ public class RasterUtils {
             }
         }
 
-        private PixelType(int value, int pixelSize) {
+        PixelType(int value, int pixelSize) {
             this.value = value;
             this.pixelSize = pixelSize;
         }

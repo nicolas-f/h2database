@@ -149,7 +149,7 @@ public class Function extends Expression implements FunctionCall {
     public static final int ST_METADATA = 350, ST_RASTERFROMIMAGE = 351,
             ST_IMAGEFROMRASTER = 352, ST_MAKEEMPTYRASTER = 353,
             ST_BANDMETADATA = 354,  ST_WORLDTORASTERCOORD = 355,
-            ST_RASTERTOWORLDCOORD = 356;
+            ST_RASTERTOWORLDCOORD = 356, ST_ADDBAND = 357;
 
     private static final int VAR_ARGS = -1;
     private static final long PRECISION_UNKNOWN = -1;
@@ -519,6 +519,7 @@ public class Function extends Expression implements FunctionCall {
                 .RASTER);
         addFunction("ST_RASTERTOWORLDCOORD", ST_RASTERTOWORLDCOORD, 3, Value.ARRAY);
         addFunction("ST_WORLDTORASTERCOORD", ST_WORLDTORASTERCOORD, 3, Value.ARRAY);
+        addFunction("ST_ADDBAND", ST_ADDBAND, VAR_ARGS, Value.RASTER);
     }
 
     protected Function(Database database, FunctionInfo info) {
@@ -1894,6 +1895,19 @@ public class Function extends Expression implements FunctionCall {
                 } catch (IOException ex) {
                     throw DbException.convertIOException(ex, getSQL());
                 }
+                break;
+            }
+            case ST_ADDBAND: {
+                // Add one new band in an existing raster
+                Value.ValueRasterMarker raster;
+                if (v0 instanceof Value.ValueRasterMarker) {
+                    raster = ((Value.ValueRasterMarker) v0);
+                } else {
+                    raster = ((Value.ValueRasterMarker) (v0
+                            .convertTo(Value.RASTER)));
+                }
+                String outsideImageFile = v1.getString();
+                raster.
                 break;
             }
         default:
